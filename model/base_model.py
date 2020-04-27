@@ -151,10 +151,10 @@ class BaseModel():
                         continue
                     save_filename = '%s_net_%s_%s.pth' % (which_epoch, name, subnet)
                     save_path = os.path.join(self.save_dir, save_filename)
-                    net = getattr(net, subnet)
-                    torch.save(net.cpu().state_dict(), save_path)
+                    snet = getattr(net, subnet)
+                    torch.save(snet.cpu().state_dict(), save_path)
                     if len(self.gpu_ids) > 0 and torch.cuda.is_available():
-                        net.cuda()
+                        snet.cuda()
             else:
                 save_filename = '%s_net_%s.pth' % (which_epoch, name)
                 save_path = os.path.join(self.save_dir, save_filename)
