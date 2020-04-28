@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from model.networks.resample2d_package.resample2d import Resample2d
 # from model.networks.correlation_package.correlation   import Correlation
 from model.networks.block_extractor.block_extractor  import BlockExtractor
+from model.networks.mutil_block_extractor.mutil_block_extractor import MutilBlockExtractor
 from model.networks.local_attn_reshape.local_attn_reshape   import LocalAttnReshape
 from torch.nn.utils.spectral_norm import spectral_norm as SpectralNorm
 ######################################################################################
@@ -775,17 +776,15 @@ class ExtractorAttn(nn.Module):
         softmax = nonlinearity if softmax is None else nn.Softmax(dim=1)
 
         self.extractor = BlockExtractor(kernel_size=kernel_size)
+        self.mutil_extractor = MutilBlockExtractor(kernel_size=kernel_size)
         self.reshape = LocalAttnReshape()
         self.fully_connect_layer = nn.Sequential(
                 nn.Conv2d(2*feature_nc, hidden_nc, kernel_size=kernel_size, stride=kernel_size, padding=0),
                 nonlinearity,
                 nn.Conv2d(hidden_nc, kernel_size*kernel_size, kernel_size=1, stride=1, padding=0),
                 softmax,)        
-    def forward(self, source, target, flow_field):
-        block_source_a = self.extractor(source[0], flow_field[0])
-        block_source_b = self.extractor(source[1], flow_field[1])
-        block_source_c = self.extractor(source[2], flow_field[2])
-        block_source = block_source_a+block_source_b+block_source_c
+    def forward(self, source, target, flow_field, mask):
+        block_source = self.extractor(source[0],source[1],source[2], flow_field[0],flow_field[1],flow_field[2],mask[0],mask[1],mask[2])
         block_target = self.extractor(target, torch.zeros_like(flow_field[0]))
         attn_param = self.fully_connect_layer(torch.cat((block_target, block_source), 1))
         attn_param = self.reshape(attn_param, self.kernel_size)
