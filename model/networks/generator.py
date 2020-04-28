@@ -162,10 +162,8 @@ class PoseTargetNet(BaseNetwork):
 
     def mask_maker(self,mask,target_mask):
         _,_,h,w = mask.size()
-        target_mask = target_mask.float()
         my_mask = torch.nn.functional.interpolate(target_mask, (h,w))
-        my_mask *= mask
-        return my_mask
+        return my_mask*mask,my_mask
 
     def forward(self, target_B, source_feature, flow_fields, masks, target_mask):
         out = self.block0(target_B)
@@ -178,10 +176,11 @@ class PoseTargetNet(BaseNetwork):
             if self.layers-i in self.attn_layer:
                 model = getattr(self, 'attn' + str(i))
 
-                my_mask_a = self.mask_maker(masks[0][counter],target_mask[:4])
-                my_mask_b = self.mask_maker(masks[1][counter],target_mask[4:8])
-                my_mask_c = self.mask_maker(masks[2][counter],target_mask[8:12])
+                my_mask_a,msk_a = self.mask_maker(masks[0][counter],target_mask[:4])
+                my_mask_b,msk_b = self.mask_maker(masks[1][counter],target_mask[4:8])
+                my_mask_c,msk_c = self.mask_maker(masks[2][counter],target_mask[8:12])
                 my_mask = my_mask_a+my_mask_b+my_mask_c
+                target_mask = torch.cat([msk_a,msk_b,msk_c])
                 out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]], target_mask)        
                 out = out*(1-my_mask) + out_attn*my_mask
                 counter += 1

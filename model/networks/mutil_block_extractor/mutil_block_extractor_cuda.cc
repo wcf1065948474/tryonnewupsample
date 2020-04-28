@@ -1,7 +1,7 @@
 #include <ATen/ATen.h>
 #include <torch/torch.h>
 
-#include "block_extractor_kernel.cuh"
+#include "mutil_block_extractor_kernel.cuh"
 int block_extractor_cuda_forward(
     at::Tensor& source,
     at::Tensor& flow_field, 
