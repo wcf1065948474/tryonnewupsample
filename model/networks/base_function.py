@@ -784,7 +784,9 @@ class ExtractorAttn(nn.Module):
                 nn.Conv2d(hidden_nc, kernel_size*kernel_size, kernel_size=1, stride=1, padding=0),
                 softmax,)        
     def forward(self, source, target, flow_field, mask):
-        block_source = self.extractor(source[0],source[1],source[2], flow_field[0],flow_field[1],flow_field[2],mask[0],mask[1],mask[2])
+        source = torch.cat(source)
+        flow_field = torch.cat(flow_field)
+        block_source = self.mutil_extractor(source,flow_field,mask)
         block_target = self.extractor(target, torch.zeros_like(flow_field[0]))
         attn_param = self.fully_connect_layer(torch.cat((block_target, block_source), 1))
         attn_param = self.reshape(attn_param, self.kernel_size)

@@ -182,7 +182,7 @@ class PoseTargetNet(BaseNetwork):
                 my_mask_b = self.mask_maker(masks[1][counter],target_mask[4:8])
                 my_mask_c = self.mask_maker(masks[2][counter],target_mask[8:12])
                 my_mask = my_mask_a+my_mask_b+my_mask_c
-                out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]], [target_mask[0:4],target_mask[4:8],target_mask[8:12]])        
+                out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]], target_mask)        
                 out = out*(1-my_mask) + out_attn*my_mask
                 counter += 1
 

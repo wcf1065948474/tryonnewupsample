@@ -1,43 +1,28 @@
 #include <ATen/ATen.h>
 #include <torch/torch.h>
 
-#include "mutil_block_extractor_kernel.cuh"
-int mutil_block_extractor_cuda_forward(
-    at::Tensor& source_a,
-    at::Tensor& source_b,
-    at::Tensor& source_c,
-    at::Tensor& flow_field_a, 
-    at::Tensor& flow_field_b,
-    at::Tensor& flow_field_c,
-    at::Tensor& mask_a,
-    at::Tensor& mask_b,
-    at::Tensor& mask_c,
+#include "block_extractor_kernel.cuh"
+int block_extractor_cuda_forward(
+    at::Tensor& source,
+    at::Tensor& flow_field, 
+    at::Tensor& masks,
     at::Tensor& output,
     int kernel_size) {
-        mutil_block_extractor_kernel_forward(source_a, source_b, source_c, flow_field_a, flow_field_b, flow_field_c, mask_a, mask_b, mask_c, output, kernel_size);
+        block_extractor_kernel_forward(source, flow_field, masks, output, kernel_size);
     return 1;
 }
 
-int mutil_block_extractor_cuda_backward(
-    at::Tensor& source_a,
-    at::Tensor& source_b,
-    at::Tensor& source_c,
-    at::Tensor& flow_field_a,
-    at::Tensor& flow_field_b,
-    at::Tensor& flow_field_c,
-    at::Tensor& mask_a,
-    at::Tensor& mask_b,
-    at::Tensor& mask_c,
+int block_extractor_cuda_backward(
+    at::Tensor& source, 
+    at::Tensor& flow_field,
+    at::Tensor& masks,
     at::Tensor& grad_output,
-    at::Tensor& grad_source_a,
-    at::Tensor& grad_source_b,
-    at::Tensor& grad_source_c, 
-    at::Tensor& grad_flow_field_a,
-    at::Tensor& grad_flow_field_b,
-    at::Tensor& grad_flow_field_c,  
+    at::Tensor& grad_source, 
+    at::Tensor& grad_flow_field, 
     int kernel_size) {
-        mutil_block_extractor_kernel_backward(source_a, source_b, source_c, flow_field_a, flow_field_b, flow_field_c, mask_a, mask_b, mask_c, grad_output,
-                                 grad_source_a, grad_source_b, grad_source_c, grad_flow_field_a, grad_flow_field_b, grad_flow_field_c, kernel_size);
+        block_extractor_kernel_backward(source, flow_field, masks, grad_output,
+                                 grad_source, grad_flow_field, 
+                                 kernel_size);
     return 1;
 }
 
@@ -45,7 +30,6 @@ int mutil_block_extractor_cuda_backward(
 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("forward", &mutil_block_extractor_cuda_forward, "MutilBlockExtractor forward (CUDA)");
-  m.def("backward", &mutil_block_extractor_cuda_backward, "MutilBlockExtractor backward (CUDA)");
+  m.def("forward", &block_extractor_cuda_forward, "BlockExtractor forward (CUDA)");
+  m.def("backward", &block_extractor_cuda_backward, "BlockExtractor backward (CUDA)");
 }
-
