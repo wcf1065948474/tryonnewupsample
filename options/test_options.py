@@ -8,6 +8,7 @@ class TestOptions(BaseOptions):
         parser.set_defaults(serial_batches=True)
         parser.set_defaults(phase='test')
         parser.set_defaults(batchSize=1)
+        parser.add_argument('--calcfid', action='store_true', help='calc fid')
         self.isTrain = False
 
         return parser

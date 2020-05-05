@@ -19,13 +19,19 @@
 
 template <typename scalar_t>
 __global__ void kernel_block_extractor_update_output(const int n, 
-                                                const scalar_t* __restrict__ source, 
+                                                const scalar_t* __restrict__ source_a, 
+                                                const scalar_t* __restrict__ source_b, 
+                                                const scalar_t* __restrict__ source_c, 
                                                 const long4 source_size, 
                                                 const long4 source_stride,
-                                                const scalar_t* __restrict__ flow_field,
+                                                const scalar_t* __restrict__ flow_field_a,
+                                                const scalar_t* __restrict__ flow_field_b,
+                                                const scalar_t* __restrict__ flow_field_c,
                                                 const long4 flow_field_size, 
                                                 const long4 flow_field_stride,
-                                                const scalar_t* __restrict__ masks, 
+                                                const scalar_t* __restrict__ masks_a, 
+                                                const scalar_t* __restrict__ masks_b, 
+                                                const scalar_t* __restrict__ masks_c, 
                                                 const long4 masks_size, 
                                                 const long4 masks_stride,
                                                 scalar_t* __restrict__ output, 
@@ -62,12 +68,15 @@ __global__ void kernel_block_extractor_update_output(const int n,
     int yf_offset = y%kernel_size - kernel_size/2;
     int xf_offset = x%kernel_size - kernel_size/2;
 
-    if(DIM3_INDEX(masks,b,0,yf,xf)==1){
-        b=b;
-    }else if(DIM3_INDEX(masks,b+dim_b,0,yf,xf)==1){
-        b = b+dim_b;
-    }else if(DIM3_INDEX(masks,b+2*dim_b,0,yf,xf)==1){
-        b = b+2*dim_b;
+    if(DIM3_INDEX(masks_a,b,0,yf,xf)==1){
+        source = source_a;
+        flow_field = flow_field_a;
+    }else if(DIM3_INDEX(masks_b,b,0,yf,xf)==1){
+        source = source_b;
+        flow_field = flow_field_b;
+    }else if(DIM3_INDEX(masks_c,b,0,yf,xf)==1){
+        source = source_c;
+        flow_field = flow_field_c;
     }else
     return;
 
@@ -101,22 +110,32 @@ __global__ void kernel_block_extractor_update_output(const int n,
 template <typename scalar_t>
 __global__ void kernel_block_extractor_backward(
                                             const int n,  
-                                            const scalar_t* __restrict__ source, 
+                                            const scalar_t* __restrict__ source_a, 
+                                            const scalar_t* __restrict__ source_b, 
+                                            const scalar_t* __restrict__ source_c, 
                                             const long4 source_size, 
                                             const long4 source_stride,
-                                            const scalar_t* __restrict__ flow_field, 
+                                            const scalar_t* __restrict__ flow_field_a, 
+                                            const scalar_t* __restrict__ flow_field_b, 
+                                            const scalar_t* __restrict__ flow_field_c, 
                                             const long4 flow_field_size, 
                                             const long4 flow_field_stride,
-                                            const scalar_t* __restrict__ masks, 
+                                            const scalar_t* __restrict__ masks_a, 
+                                            const scalar_t* __restrict__ masks_b, 
+                                            const scalar_t* __restrict__ masks_c, 
                                             const long4 masks_size, 
                                             const long4 masks_stride,
                                             const scalar_t* __restrict__ grad_output, 
                                             const long4 grad_output_size, 
                                             const long4 grad_output_stride,
-                                            scalar_t* __restrict__ grad_source, 
+                                            scalar_t* __restrict__ grad_source_a, 
+                                            scalar_t* __restrict__ grad_source_b, 
+                                            scalar_t* __restrict__ grad_source_c, 
                                             const long4 grad_source_size, 
                                             const long4 grad_source_stride, 
-                                            scalar_t* __restrict__ grad_flow_field, 
+                                            scalar_t* __restrict__ grad_flow_field_a, 
+                                            scalar_t* __restrict__ grad_flow_field_b, 
+                                            scalar_t* __restrict__ grad_flow_field_c, 
                                             const long4 grad_flow_field_size, 
                                             const long4 grad_flow_field_stride,         
                                             int kernel_size) {
@@ -148,12 +167,21 @@ __global__ void kernel_block_extractor_backward(
     int yf_offset = y%kernel_size - kernel_size/2;
     int xf_offset = x%kernel_size - kernel_size/2;
 
-    if(DIM3_INDEX(masks,b,0,yf,xf)==1){
-        b=b;
-    }else if(DIM3_INDEX(masks,b+dim_b,0,yf,xf)==1){
-        b = b+dim_b;
-    }else if(DIM3_INDEX(masks,b+2*dim_b,0,yf,xf)==1){
-        b = b+2*dim_b;
+    if(DIM3_INDEX(masks_a,b,0,yf,xf)==1){
+        source = source_a;
+        flow_field = flow_field_a;
+        grad_source = grad_source_a;
+        grad_flow_field = grad_flow_field_a;
+    }else if(DIM3_INDEX(masks_b,b,0,yf,xf)==1){
+        source = source_b;
+        flow_field = flow_field_b;
+        grad_source = grad_source_b;
+        grad_flow_field = grad_flow_field_b;
+    }else if(DIM3_INDEX(masks_c,b,0,yf,xf)==1){
+        source = source_c;
+        flow_field = flow_field_c;
+        grad_source = grad_source_c;
+        grad_flow_field = grad_flow_field_c;
     }else
     return;
 
@@ -194,9 +222,15 @@ __global__ void kernel_block_extractor_backward(
 }
 
 void block_extractor_kernel_forward(
-    at::Tensor& source,
-    at::Tensor& flow_field,
-    at::Tensor& masks,
+    at::Tensor& source_a,
+    at::Tensor& source_b,
+    at::Tensor& source_c,
+    at::Tensor& flow_field_a, 
+    at::Tensor& flow_field_b, 
+    at::Tensor& flow_field_c, 
+    at::Tensor& masks_a,
+    at::Tensor& masks_b,
+    at::Tensor& masks_c,
     at::Tensor& output,
     int kernel_size) {
     // clock_t start, end;
@@ -204,14 +238,14 @@ void block_extractor_kernel_forward(
 
     int n = output.numel();
 
-    const long4 source_size = make_long4(source.size(0), source.size(1), source.size(2), source.size(3));
-    const long4 source_stride = make_long4(source.stride(0), source.stride(1), source.stride(2), source.stride(3));
+    const long4 source_size = make_long4(source_a.size(0), source_a.size(1), source_a.size(2), source_a.size(3));
+    const long4 source_stride = make_long4(source_a.stride(0), source_a.stride(1), source_a.stride(2), source_a.stride(3));
 
-    const long4 flow_field_size = make_long4(flow_field.size(0), flow_field.size(1), flow_field.size(2), flow_field.size(3));
-    const long4 flow_field_stride = make_long4(flow_field.stride(0), flow_field.stride(1), flow_field.stride(2), flow_field.stride(3));
+    const long4 flow_field_size = make_long4(flow_field_a.size(0), flow_field_a.size(1), flow_field_a.size(2), flow_field_a.size(3));
+    const long4 flow_field_stride = make_long4(flow_field_a.stride(0), flow_field_a.stride(1), flow_field_a.stride(2), flow_field_a.stride(3));
 
-    const long4 masks_size = make_long4(masks.size(0), masks.size(1), masks.size(2), masks.size(3));
-    const long4 masks_stride = make_long4(masks.stride(0), masks.stride(1), masks.stride(2), masks.stride(3));
+    const long4 masks_size = make_long4(masks_a.size(0), masks_a.size(1), masks_a.size(2), masks_a.size(3));
+    const long4 masks_stride = make_long4(masks_a.stride(0), masks_a.stride(1), masks_a.stride(2), masks_a.stride(3));
 
     const long4 output_size = make_long4(output.size(0), output.size(1), output.size(2), output.size(3));
     const long4 output_stride = make_long4(output.stride(0), output.stride(1), output.stride(2), output.stride(3));
@@ -221,16 +255,22 @@ void block_extractor_kernel_forward(
     const dim3 threads(Threads);
     const dim3 blocks((n + Threads - 1) / Threads);
 
-    AT_DISPATCH_FLOATING_TYPES(source.type(), "block_extractor_forward_kernel", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(source_a.type(), "block_extractor_forward_kernel", ([&] {
         kernel_block_extractor_update_output<scalar_t><<< blocks, threads, 0, at::cuda::getCurrentCUDAStream() >>>(
             n,
-            source.data<scalar_t>(),
+            source_a.data<scalar_t>(),
+            source_b.data<scalar_t>(),
+            source_c.data<scalar_t>(),
             source_size,
             source_stride, 
-            flow_field.data<scalar_t>(),
+            flow_field_a.data<scalar_t>(),
+            flow_field_b.data<scalar_t>(),
+            flow_field_c.data<scalar_t>(),
             flow_field_size,
             flow_field_stride,
-            masks.data<scalar_t>(),
+            masks_a.data<scalar_t>(),
+            masks_b.data<scalar_t>(),
+            masks_c.data<scalar_t>(),
             masks_size,
             masks_stride,
             output.data<scalar_t>(),
@@ -251,34 +291,44 @@ void block_extractor_kernel_forward(
 
 
 void block_extractor_kernel_backward(
-    at::Tensor& source,
-    at::Tensor& flow_field,
-    at::Tensor& masks,
+    at::Tensor& source_a,
+    at::Tensor& source_b, 
+    at::Tensor& source_c, 
+    at::Tensor& flow_field_a,
+    at::Tensor& flow_field_b,
+    at::Tensor& flow_field_c,
+    at::Tensor& masks_a,
+    at::Tensor& masks_b,
+    at::Tensor& masks_c,
     at::Tensor& grad_output,
-    at::Tensor& grad_source, 
-    at::Tensor& grad_flow_field, 
+    at::Tensor& grad_source_a, 
+    at::Tensor& grad_source_b, 
+    at::Tensor& grad_source_c, 
+    at::Tensor& grad_flow_field_a, 
+    at::Tensor& grad_flow_field_b,
+    at::Tensor& grad_flow_field_c,
     int kernel_size) {  
 
     int n = grad_output.numel();
 
-    const long4 source_size = make_long4(source.size(0), source.size(1), source.size(2), source.size(3));
-    const long4 source_stride = make_long4(source.stride(0), source.stride(1), source.stride(2), source.stride(3));
+    const long4 source_size = make_long4(source_a.size(0), source_a.size(1), source_a.size(2), source_a.size(3));
+    const long4 source_stride = make_long4(source_a.stride(0), source_a.stride(1), source_a.stride(2), source_a.stride(3));
 
-    const long4 flow_field_size = make_long4(flow_field.size(0), flow_field.size(1), flow_field.size(2), flow_field.size(3));
-    const long4 flow_field_stride = make_long4(flow_field.stride(0), flow_field.stride(1), flow_field.stride(2), flow_field.stride(3));
+    const long4 flow_field_size = make_long4(flow_field_a.size(0), flow_field_a.size(1), flow_field_a.size(2), flow_field_a.size(3));
+    const long4 flow_field_stride = make_long4(flow_field_a.stride(0), flow_field_a.stride(1), flow_field_a.stride(2), flow_field_a.stride(3));
 
-    const long4 masks_size = make_long4(masks.size(0), masks.size(1), masks.size(2), masks.size(3));
-    const long4 masks_stride = make_long4(masks.stride(0), masks.stride(1), masks.stride(2), masks.stride(3));
+    const long4 masks_size = make_long4(masks_a.size(0), masks_a.size(1), masks_a.size(2), masks_a.size(3));
+    const long4 masks_stride = make_long4(masks_a.stride(0), masks_a.stride(1), masks_a.stride(2), masks_a.stride(3));
 
 
     const long4 grad_output_size = make_long4(grad_output.size(0), grad_output.size(1), grad_output.size(2), grad_output.size(3));
     const long4 grad_output_stride = make_long4(grad_output.stride(0), grad_output.stride(1), grad_output.stride(2), grad_output.stride(3));
 
-    const long4 grad_source_size = make_long4(grad_source.size(0), grad_source.size(1), grad_source.size(2), grad_source.size(3));
-    const long4 grad_source_stride = make_long4(grad_source.stride(0), grad_source.stride(1), grad_source.stride(2), grad_source.stride(3));
+    const long4 grad_source_size = make_long4(grad_source_a.size(0), grad_source_a.size(1), grad_source_a.size(2), grad_source_a.size(3));
+    const long4 grad_source_stride = make_long4(grad_source_a.stride(0), grad_source_a.stride(1), grad_source_a.stride(2), grad_source_a.stride(3));
 
-    const long4 grad_flow_field_size = make_long4(grad_flow_field.size(0), grad_flow_field.size(1), grad_flow_field.size(2), grad_flow_field.size(3));
-    const long4 grad_flow_field_stride = make_long4(grad_flow_field.stride(0), grad_flow_field.stride(1), grad_flow_field.stride(2), grad_flow_field.stride(3));
+    const long4 grad_flow_field_size = make_long4(grad_flow_field_a.size(0), grad_flow_field_a.size(1), grad_flow_field_a.size(2), grad_flow_field_a.size(3));
+    const long4 grad_flow_field_stride = make_long4(grad_flow_field_a.stride(0), grad_flow_field_a.stride(1), grad_flow_field_a.stride(2), grad_flow_field_a.stride(3));
 
 
     int Threads = CUDA_NUM_THREADS;
@@ -286,25 +336,35 @@ void block_extractor_kernel_backward(
     const dim3 threads(Threads);
     const dim3 blocks((n + Threads - 1) / Threads);
 
-    AT_DISPATCH_FLOATING_TYPES(source.type(), "block_extractor_backward", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(source_a.type(), "block_extractor_backward", ([&] {
         kernel_block_extractor_backward<scalar_t><<< blocks, threads, 0, at::cuda::getCurrentCUDAStream() >>>(
             n, 
-            source.data<scalar_t>(), 
+            source_a.data<scalar_t>(), 
+            source_b.data<scalar_t>(), 
+            source_c.data<scalar_t>(), 
             source_size,
             source_stride,
-            flow_field.data<scalar_t>(),
+            flow_field_a.data<scalar_t>(),
+            flow_field_b.data<scalar_t>(),
+            flow_field_c.data<scalar_t>(),
             flow_field_size, 
             flow_field_stride,
-            masks.data<scalar_t>(),
+            masks_a.data<scalar_t>(),
+            masks_b.data<scalar_t>(),
+            masks_c.data<scalar_t>(),
             masks_size,
             masks_stride,
             grad_output.data<scalar_t>(),
             grad_output_size,
             grad_output_stride,
-            grad_source.data<scalar_t>(),
+            grad_source_a.data<scalar_t>(),
+            grad_source_b.data<scalar_t>(),
+            grad_source_c.data<scalar_t>(),
             grad_source_size,
             grad_source_stride, 
-            grad_flow_field.data<scalar_t>(),
+            grad_flow_field_a.data<scalar_t>(),
+            grad_flow_field_b.data<scalar_t>(),
+            grad_flow_field_c.data<scalar_t>(),
             grad_flow_field_size,
             grad_flow_field_stride,    
             kernel_size);

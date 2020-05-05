@@ -14,40 +14,18 @@ from collections import OrderedDict
 # Human Pose Image Generation 
 ######################################################################################################
 class PoseGenerator(BaseNetwork):
-    def __init__(self,  image_nc=3, structure_nc=18, output_nc=3, ngf=64, img_f=1024, layers=6, num_blocks=2, 
+    def __init__(self,  batchSize, image_nc=3, structure_nc=18, output_nc=3, ngf=64, img_f=1024, layers=6, num_blocks=2, 
                 norm='batch', activation='ReLU', attn_layer=[1,2], extractor_kz={'1':5,'2':5}, use_spect=True, use_coord=False):  
         super(PoseGenerator, self).__init__()
-        self.backgrand = InpaintSANet(c_dim=4)
+        # self.backgrand = InpaintSANet(c_dim=4)
 
         self.source = PoseSourceNet(image_nc, ngf, img_f, layers, 
                                                     norm, activation, use_spect, use_coord)
-        self.target = PoseTargetNet(image_nc, structure_nc, output_nc, ngf, img_f, layers, num_blocks, 
+        self.target = PoseTargetNet(batchSize, image_nc, structure_nc, output_nc, ngf, img_f, layers, num_blocks, 
                                                 norm, activation, attn_layer, extractor_kz, use_spect, use_coord)
         self.flow_net = PoseFlowNet(image_nc, structure_nc, ngf=32, img_f=256, encoder_layer=5, 
                                     attn_layer=attn_layer, norm=norm, activation=activation,
                                     use_spect=use_spect, use_coord=use_coord)       
-
-    def _load_params(self, network, load_path, need_module=False):
-        assert os.path.exists(
-            load_path), 'Weights file not found. Have you trained a model!? We are not providing one %s' % load_path
-
-        def load(model, orig_state_dict):
-            state_dict = OrderedDict()
-            for k, v in orig_state_dict.items():
-                # remove 'module'
-                name = k[7:] if 'module' in k else k
-                state_dict[name] = v
-
-            # load params
-            model.load_state_dict(state_dict)
-
-        save_data = torch.load(load_path)
-        if need_module:
-            network.load_state_dict(save_data)
-        else:
-            load(network, save_data)
-
-        print('Loading net: %s' % load_path)
 
 
     def forward(self, source, source_B, target_B, source_full, source_body_mask, target_mask, target_backgrand_mask):
@@ -56,7 +34,7 @@ class PoseGenerator(BaseNetwork):
         feature_list_b = self.source(source_b)
         feature_list_c = self.source(source_c)
 
-        source_backgrand = self.backgrand(source_full,masks=source_body_mask,only_x=True)
+        # source_backgrand = self.backgrand(source_full,masks=source_body_mask,only_x=True)
 
         source_B_a,source_B_b,source_B_c = torch.chunk(source_B,3)
         target_B_a,target_B_b,target_B_c = torch.chunk(target_B,3)
@@ -72,7 +50,7 @@ class PoseGenerator(BaseNetwork):
         # gen = image_gen*target_mask
         # gen = gen.view(3,-1,c,h,w)
         # gen = torch.sum(gen,0)
-        image_gen = source_backgrand*target_backgrand_mask+image_gen*(1.0-target_backgrand_mask)
+        image_gen = image_gen*(1.0-target_backgrand_mask)# + source_backgrand*target_backgrand_mask
         return image_gen, [flow_fields_a,flow_fields_b,flow_fields_c], [masks_a,masks_b,masks_c]
 
     def forward_hook_function(self, source, source_B, target_B):
@@ -117,10 +95,10 @@ class PoseSourceNet(BaseNetwork):
 
 
 class PoseTargetNet(BaseNetwork):
-    def __init__(self, image_nc=3, structure_nc=18, output_nc=3, ngf=64, img_f=1024, layers=6, num_blocks=2, 
+    def __init__(self, batchSize, image_nc=3, structure_nc=18, output_nc=3, ngf=64, img_f=1024, layers=6, num_blocks=2, 
                 norm='batch', activation='ReLU', attn_layer=[1,2], extractor_kz={'1':5,'2':5}, use_spect=True, use_coord=False):  
         super(PoseTargetNet, self).__init__()
-
+        self.batchSize = batchSize
         self.layers = layers
         self.attn_layer = attn_layer
 
@@ -163,7 +141,7 @@ class PoseTargetNet(BaseNetwork):
     def mask_maker(self,mask,target_mask):
         _,_,h,w = mask.size()
         my_mask = torch.nn.functional.interpolate(target_mask, (h,w))
-        return my_mask*mask,my_mask
+        return my_mask*mask
 
     def forward(self, target_B, source_feature, flow_fields, masks, target_mask):
         out = self.block0(target_B)
@@ -176,12 +154,13 @@ class PoseTargetNet(BaseNetwork):
             if self.layers-i in self.attn_layer:
                 model = getattr(self, 'attn' + str(i))
 
-                my_mask_a,msk_a = self.mask_maker(masks[0][counter],target_mask[:4])
-                my_mask_b,msk_b = self.mask_maker(masks[1][counter],target_mask[4:8])
-                my_mask_c,msk_c = self.mask_maker(masks[2][counter],target_mask[8:12])
+                my_mask_a = self.mask_maker(masks[0][counter],target_mask[:self.batchSize])
+                my_mask_b = self.mask_maker(masks[1][counter],target_mask[self.batchSize:2*self.batchSize])
+                my_mask_c = self.mask_maker(masks[2][counter],target_mask[2*self.batchSize:])
                 my_mask = my_mask_a+my_mask_b+my_mask_c
-                target_mask = torch.cat([msk_a,msk_b,msk_c])
-                out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]], target_mask)        
+                _,_,h,w = flow_fields[0][counter].size()
+                target_mask = torch.nn.functional.interpolate(target_mask, (h,w))
+                out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]]),[target_mask[:self.batchSize],target_mask[self.batchSize:2*self.batchSize],target_mask[2*self.batchSize:]])        
                 out = out*(1-my_mask) + out_attn*my_mask
                 counter += 1
 

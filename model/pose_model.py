@@ -54,7 +54,7 @@ class Pose(BaseModel):
                            'ad_gen', 'dis_img_gen']
 
         self.visual_names = ['input_P1','input_P2', 'img_gen', 'flow_fields', 'masks']
-        self.model_names = {'G':['backgrand','source','target','flow_net'],'D':[]}
+        self.model_names = {'G':['source','target','flow_net'],'D':[]}
 
         self.keys = ['head','body','leg']
         self.mask_id = {'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
@@ -64,7 +64,7 @@ class Pose(BaseModel):
             else torch.FloatTensor
 
         # define the generator
-        self.net_G = network.define_g(opt, image_nc=opt.image_nc, structure_nc=opt.structure_nc, ngf=64, img_f=512,
+        self.net_G = network.define_g(opt, batchSize=opt.batchSize, image_nc=opt.image_nc, structure_nc=opt.structure_nc, ngf=64, img_f=512,
                                       layers=opt.layers, num_blocks=2, use_spect=opt.use_spect_g, attn_layer=opt.attn_layer, 
                                       norm='instance', activation='LeakyReLU', extractor_kz=opt.kernel_size)
 
@@ -97,32 +97,15 @@ class Pose(BaseModel):
         # load the pre-trained model and schedulers
         self.setup(opt)
 
-
-    # def set_input(self, input):
-    #     # move to GPU and change data types
-    #     self.input = input
-    #     input_P1, input_BP1 = input['P1'], input['BP1']
-    #     input_P2, input_BP2 = input['P2'], input['BP2']
-
-    #     if len(self.gpu_ids) > 0:
-    #         self.input_P1 = input_P1.cuda(self.gpu_ids[0], async=True)
-    #         self.input_BP1 = input_BP1.cuda(self.gpu_ids[0], async=True)
-    #         self.input_P2 = input_P2.cuda(self.gpu_ids[0], async=True)
-    #         self.input_BP2 = input_BP2.cuda(self.gpu_ids[0], async=True)        
-
-    #     self.image_paths=[]
-    #     for i in range(self.input_P1.size(0)):
-    #         self.image_paths.append(os.path.splitext(input['P1_path'][i])[0] + '_2_' + input['P2_path'][i])
-
     def set_input(self,input):
         # move to GPU and change data types
         random.shuffle(self.keys)
         
         if len(self.gpu_ids) > 0:
-            self.input_fullP1 = input['P1'].cuda(self.gpu_ids[0], async=True)
-            self.input_fullP2 = input['P2'].cuda(self.gpu_ids[0], async=True)
-            input_P1mask = input['P1masks'].cuda(self.gpu_ids[0],async=True)
-            input_P2mask = input['P2masks'].cuda(self.gpu_ids[0],async=True)
+            self.input_fullP1 = input['P1'].cuda()
+            self.input_fullP2 = input['P2'].cuda()
+            input_P1mask = input['P1masks'].cuda()
+            input_P2mask = input['P2masks'].cuda()
 
         input_P1mask,input_P1backmask = pose_utils.obtain_mask(input_P1mask,self.mask_id,self.keys)
         input_P2mask,input_P2backmask = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
@@ -144,12 +127,10 @@ class Pose(BaseModel):
     def test(self):
         """Forward function used in test time"""
         img_gen, flow_fields, masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
-        self.save_results(img_gen, data_name='vis')
-        if self.opt.save_input:
-            self.save_results(self.input_P1, data_name='ref')
-            self.save_results(self.input_P2, data_name='gt')
-                       
-                
+        res_img = torch.cat([self.input_fullP1*(1.0-self.input_P1backmask),self.input_fullP2*(1.0-self.input_P2backmask),img_gen],3)
+        self.save_results(res_img,self.opt.results_dir, data_name='vis')
+        if self.opt.calcfid:
+            self.save_results(img_gen,'calc_fid_dir', data_name='gen')
 
     def forward(self):
         """Run forward processing to get the inputs"""
@@ -178,18 +159,18 @@ class Pose(BaseModel):
     def backward_D(self):
         """Calculate the GAN loss for the discriminators"""
         base_function._unfreeze(self.net_D)
-        self.loss_dis_img_gen = self.backward_D_basic(self.net_D, self.input_fullP2, self.img_gen)
+        self.loss_dis_img_gen = self.backward_D_basic(self.net_D, self.input_fullP2*(1.0-self.input_P2backmask), self.img_gen) #注意有无背景！
 
     def backward_G(self):
         """Calculate training loss for the generator"""
         # Calculate l1 loss 
-        loss_app_gen = self.L1loss(self.img_gen, self.input_fullP2)
+        loss_app_gen = self.L1loss(self.img_gen, self.input_fullP2*(1.0-self.input_P2backmask)) #注意有无背景！
         self.loss_app_gen = loss_app_gen * self.opt.lambda_rec
         
         # Calculate Sampling Correctness Loss        
-        loss_correctness_gen = self.Correctness(self.input_P2[0:4], self.input_P1[0:4], self.flow_fields[0], self.opt.attn_layer)+\
-            self.Correctness(self.input_P2[4:8], self.input_P1[4:8], self.flow_fields[1], self.opt.attn_layer)+\
-                self.Correctness(self.input_P2[8:12], self.input_P1[8:12], self.flow_fields[2], self.opt.attn_layer)
+        loss_correctness_gen = self.Correctness(self.input_P2[:self.opt.batchSize], self.input_P1[:self.opt.batchSize], self.flow_fields[0], self.opt.attn_layer)+\
+            self.Correctness(self.input_P2[self.opt.batchSize:2*self.opt.batchSize], self.input_P1[self.opt.batchSize:2*self.opt.batchSize], self.flow_fields[1], self.opt.attn_layer)+\
+                self.Correctness(self.input_P2[2*self.opt.batchSize:], self.input_P1[2*self.opt.batchSize:], self.flow_fields[2], self.opt.attn_layer)
         self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct        
 
         # Calculate GAN loss
@@ -202,7 +183,7 @@ class Pose(BaseModel):
         self.loss_regularization = loss_regularization * self.opt.lambda_regularization
 
         # Calculate perceptual loss
-        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_fullP2) 
+        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_fullP2*(1.0-self.input_P2backmask)) #注意有无背景！
         self.loss_style_gen = loss_style_gen*self.opt.lambda_style
         self.loss_content_gen = loss_content_gen*self.opt.lambda_content
 

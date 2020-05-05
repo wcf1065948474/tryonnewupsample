@@ -159,6 +159,8 @@ class BaseModel():
                 save_filename = '%s_net_%s.pth' % (which_epoch, name)
                 save_path = os.path.join(self.save_dir, save_filename)
                 torch.save(net.cpu().state_dict(), save_path)
+                if len(self.gpu_ids) > 0 and torch.cuda.is_available():
+                    net.cuda()
 
     # load models
     def start_load(self,net,name,filename,path):
@@ -216,44 +218,18 @@ class BaseModel():
                 path = os.path.join(self.save_dir, filename)
                 self.start_load(net,name,filename,path)
 
-
-
-    # def save_results(self, save_data, score=None, data_name='none'):
-    #     """Save the training or testing results to disk"""
-    #     img_paths = self.get_image_paths()
-
-    #     for i in range(save_data.size(0)):
-    #         print('process image ...... %s' % img_paths[i])
-    #         short_path = ntpath.basename(img_paths[i])  # get image path
-    #         name = os.path.splitext(short_path)[0]
-    #         if type(score) == type(None):
-    #             img_name = '%s_%s.png' % (name, data_name)
-    #         else:
-    #             # d_score = score[i].mean()
-    #             # img_name = '%s_%s_%s.png' % (name, data_name, str(round(d_score.item(), 3)))
-    #             img_name = '%s_%s_%s.png' % (name, data_name, str(score))
-    #         # save predicted image with discriminator score
-    #         util.mkdir(self.opt.results_dir)
-    #         img_path = os.path.join(self.opt.results_dir, img_name)
-    #         # print(os.path.dirname(img_path))
-    #         # util.mkdir(os.path.dirname(img_path))
-    #         img_numpy = util.tensor2im(save_data[i].data)
-    #         util.save_image(img_numpy, img_path)
-
-
-
-    def save_results(self, save_data, data_name='none', data_ext='jpg'):
+    def save_results(self, save_data, save_path, data_name='none', data_ext='jpg'):
         """Save the training or testing results to disk"""
         img_paths = self.get_image_paths()
 
         for i in range(save_data.size(0)):
-            print('process image ...... %s' % img_paths[i])
+            # print('process image ...... %s' % img_paths[i])
             short_path = ntpath.basename(img_paths[i])  # get image path
             name = os.path.splitext(short_path)[0]
             img_name = '%s_%s.%s' % (name, data_name, data_ext)
 
-            util.mkdir(self.opt.results_dir)
-            img_path = os.path.join(self.opt.results_dir, img_name)
+            util.mkdir(save_path)
+            img_path = os.path.join(save_path, img_name)
             img_numpy = util.tensor2im(save_data[i].data)
             util.save_image(img_numpy, img_path)            
 
