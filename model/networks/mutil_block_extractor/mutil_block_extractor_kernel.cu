@@ -42,6 +42,9 @@ __global__ void kernel_block_extractor_update_output(const int n,
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     const scalar_t* __restrict__ source = NULL;
     const scalar_t* __restrict__ flow_field = NULL;
+    const long4 masks_a_stride = masks_stride;
+    const long4 masks_b_stride = masks_stride;
+    const long4 masks_c_stride = masks_stride;
 
 
     if (index >= n) {
@@ -147,6 +150,9 @@ __global__ void kernel_block_extractor_backward(
     const scalar_t* __restrict__ flow_field = NULL;
     scalar_t* __restrict__ grad_source = NULL;
     scalar_t* __restrict__ grad_flow_field = NULL;
+    const long4 masks_a_stride = masks_stride;
+    const long4 masks_b_stride = masks_stride;
+    const long4 masks_c_stride = masks_stride;
 
 
     if (index >= n) {
