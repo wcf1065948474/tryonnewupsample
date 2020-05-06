@@ -19,7 +19,7 @@ class MutilBlockExtractorFunction(Function):
         ctx.save_for_backward(source_a, source_b, source_c, flow_field_a, flow_field_b, flow_field_c, masks_a, masks_b, masks_c)
         ctx.kernel_size = kernel_size
 
-        output = flow_field.new(bs, ds, kernel_size*hf, kernel_size*wf).zero_()
+        output = flow_field_a.new(bs, ds, kernel_size*hf, kernel_size*wf).zero_()
 
         if not source_a.is_cuda:
             raise NotImplementedError

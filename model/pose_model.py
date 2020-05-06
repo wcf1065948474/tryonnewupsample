@@ -159,12 +159,12 @@ class Pose(BaseModel):
     def backward_D(self):
         """Calculate the GAN loss for the discriminators"""
         base_function._unfreeze(self.net_D)
-        self.loss_dis_img_gen = self.backward_D_basic(self.net_D, self.input_fullP2*(1.0-self.input_P2backmask), self.img_gen) #注意有无背景！
+        self.loss_dis_img_gen = self.backward_D_basic(self.net_D, self.input_fullP2, self.img_gen) #注意有无背景！
 
     def backward_G(self):
         """Calculate training loss for the generator"""
         # Calculate l1 loss 
-        loss_app_gen = self.L1loss(self.img_gen, self.input_fullP2*(1.0-self.input_P2backmask)) #注意有无背景！
+        loss_app_gen = self.L1loss(self.img_gen, self.input_fullP2) #注意有无背景！
         self.loss_app_gen = loss_app_gen * self.opt.lambda_rec
         
         # Calculate Sampling Correctness Loss        
@@ -183,7 +183,7 @@ class Pose(BaseModel):
         self.loss_regularization = loss_regularization * self.opt.lambda_regularization
 
         # Calculate perceptual loss
-        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_fullP2*(1.0-self.input_P2backmask)) #注意有无背景！
+        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_fullP2) #注意有无背景！
         self.loss_style_gen = loss_style_gen*self.opt.lambda_style
         self.loss_content_gen = loss_content_gen*self.opt.lambda_content
 

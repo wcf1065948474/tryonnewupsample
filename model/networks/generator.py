@@ -50,7 +50,7 @@ class PoseGenerator(BaseNetwork):
         # gen = image_gen*target_mask
         # gen = gen.view(3,-1,c,h,w)
         # gen = torch.sum(gen,0)
-        image_gen = image_gen*(1.0-target_backgrand_mask)# + source_backgrand*target_backgrand_mask
+        # image_gen = image_gen*(1.0-target_backgrand_mask)# + source_backgrand*target_backgrand_mask
         return image_gen, [flow_fields_a,flow_fields_b,flow_fields_c], [masks_a,masks_b,masks_c]
 
     def forward_hook_function(self, source, source_B, target_B):
@@ -160,7 +160,7 @@ class PoseTargetNet(BaseNetwork):
                 my_mask = my_mask_a+my_mask_b+my_mask_c
                 _,_,h,w = flow_fields[0][counter].size()
                 target_mask = torch.nn.functional.interpolate(target_mask, (h,w))
-                out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]]),[target_mask[:self.batchSize],target_mask[self.batchSize:2*self.batchSize],target_mask[2*self.batchSize:]])        
+                out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]],[target_mask[:self.batchSize],target_mask[self.batchSize:2*self.batchSize],target_mask[2*self.batchSize:]])        
                 out = out*(1-my_mask) + out_attn*my_mask
                 counter += 1
 
