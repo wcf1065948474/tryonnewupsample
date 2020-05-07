@@ -71,10 +71,10 @@ class PoseFlowNet(BaseModel):
         random.shuffle(self.keys)
         
         if len(self.gpu_ids) > 0:
-            self.input_fullP1 = input['P1'].cuda(self.gpu_ids[0], async=True)
-            self.input_fullP2 = input['P2'].cuda(self.gpu_ids[0], async=True)
-            input_P1mask = input['P1masks'].cuda(self.gpu_ids[0],async=True)
-            input_P2mask = input['P2masks'].cuda(self.gpu_ids[0],async=True)
+            self.input_fullP1 = input['P1'].cuda()
+            self.input_fullP2 = input['P2'].cuda()
+            input_P1mask = input['P1masks'].cuda()
+            input_P2mask = input['P2masks'].cuda()
 
         input_P1mask,_ = pose_utils.obtain_mask(input_P1mask,self.mask_id,self.keys)
         input_P2mask,input_P2back = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)

@@ -37,22 +37,18 @@ class FashionDataset(BaseDataset):
 
     def init_categories(self, pairLst):
         pairs_file_train = pd.read_csv(pairLst)
-        size = len(pairs_file_train)
-        # size = 32000
+        if self.opt.dataset_size == 0:
+            size = len(pairs_file_train)
+        else:
+            size = self.opt.dataset_size
+
         pairs = []
         print('Loading data pairs ...')
         for i in range(size):
-            fromele = pairs_file_train.iloc[i]['from']
-            toele = pairs_file_train.iloc[i]['to']
-            for ele in ['Jackets_Coats','Dresses','Rompers_Jumpsuits','Cardigans']:
-                if (ele in fromele) or (ele in toele):
-                    break
-                elif ele == 'Cardigans':
-                    pair = [fromele, toele]
-                    pairs.append(pair)
-        print(len(pairs))
+            pair = [pairs_file_train.iloc[i]['from'], pairs_file_train.iloc[i]['to']]
+            pairs.append(pair)
 
-        print('Loading data pairs finished ...')  
+        print('Loading data pairs finished ...{}pairs'.format(len(pairs)))  
         return pairs    
 
 

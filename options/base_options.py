@@ -21,7 +21,7 @@ class BaseOptions():
         parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0, 1, 2 use -1 for CPU')
         parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
         parser.add_argument('--continue_train', action='store_true', help='continue training: load the latest model')
-        parser.add_argument('--dataset_size',type=int,default=32000)
+        parser.add_argument('--dataset_size',type=int,default=0)
 
 
         # input/output sizes

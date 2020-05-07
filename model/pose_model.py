@@ -51,7 +51,7 @@ class Pose(BaseModel):
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
         self.loss_names = ['app_gen', 'correctness_gen', 'content_gen', 'style_gen', 'regularization',
-                           'ad_gen', 'dis_img_gen']
+                           'ad_gen', 'dis_img_gen', 'cx']
 
         self.visual_names = ['input_P1','input_P2', 'img_gen', 'flow_fields', 'masks']
         self.model_names = {'G':['source','target','flow_net'],'D':[]}
@@ -79,9 +79,9 @@ class Pose(BaseModel):
             # define the loss functions
             self.GANloss = external_function.AdversarialLoss(opt.gan_mode).to(opt.device)
             self.L1loss = torch.nn.L1Loss()
-            self.Correctness = external_function.PerceptualCorrectness().to(opt.device)
+            # self.Correctness = external_function.PerceptualCorrectness().to(opt.device)
             self.Regularization = external_function.MultiAffineRegularizationLoss(kz_dic=opt.kernel_size).to(opt.device)
-            self.Vggloss = external_function.VGGLoss().to(opt.device)
+            self.Vggloss = external_function.VGGLoss(self.opt.batchSize).to(opt.device)
 
             # define the optimizer
             self.optimizer_G = torch.optim.Adam(itertools.chain(
@@ -168,10 +168,10 @@ class Pose(BaseModel):
         self.loss_app_gen = loss_app_gen * self.opt.lambda_rec
         
         # Calculate Sampling Correctness Loss        
-        loss_correctness_gen = self.Correctness(self.input_P2[:self.opt.batchSize], self.input_P1[:self.opt.batchSize], self.flow_fields[0], self.opt.attn_layer)+\
-            self.Correctness(self.input_P2[self.opt.batchSize:2*self.opt.batchSize], self.input_P1[self.opt.batchSize:2*self.opt.batchSize], self.flow_fields[1], self.opt.attn_layer)+\
-                self.Correctness(self.input_P2[2*self.opt.batchSize:], self.input_P1[2*self.opt.batchSize:], self.flow_fields[2], self.opt.attn_layer)
-        self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct        
+        # loss_correctness_gen = self.Correctness(self.input_P2[:self.opt.batchSize], self.input_P1[:self.opt.batchSize], self.flow_fields[0], self.opt.attn_layer)+\
+        #     self.Correctness(self.input_P2[self.opt.batchSize:2*self.opt.batchSize], self.input_P1[self.opt.batchSize:2*self.opt.batchSize], self.flow_fields[1], self.opt.attn_layer)+\
+        #         self.Correctness(self.input_P2[2*self.opt.batchSize:], self.input_P1[2*self.opt.batchSize:], self.flow_fields[2], self.opt.attn_layer)
+        # self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct        
 
         # Calculate GAN loss
         base_function._freeze(self.net_D)
@@ -183,9 +183,11 @@ class Pose(BaseModel):
         self.loss_regularization = loss_regularization * self.opt.lambda_regularization
 
         # Calculate perceptual loss
-        loss_content_gen, loss_style_gen = self.Vggloss(self.img_gen, self.input_fullP2) #注意有无背景！
+        loss_content_gen, loss_style_gen, loss_correctness_gen, loss_cx = self.Vggloss(self.img_gen, self.input_fullP2, self.input_P2, self.input_P1, self.flow_fields, self.opt.attn_layer) #注意有无背景！
         self.loss_style_gen = loss_style_gen*self.opt.lambda_style
         self.loss_content_gen = loss_content_gen*self.opt.lambda_content
+        self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct
+        self.loss_cx = loss_cx * 0.05
 
         total_loss = 0
 

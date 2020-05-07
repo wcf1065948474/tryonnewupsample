@@ -1,12 +1,57 @@
 import torch
 import torch.nn as nn
+import numpy as np
 import torchvision.models as models
 import torch.nn.functional as F
 from model.networks.resample2d_package.resample2d import Resample2d
 from model.networks.block_extractor.block_extractor   import BlockExtractor
 from model.networks.local_attn_reshape.local_attn_reshape   import LocalAttnReshape
-from util import util
-import numpy as np
+
+
+def contextual_loss(x, y, h=0.5):
+    """Computes contextual loss between x and y.
+    
+    Args:
+      x: features of shape (N, C, H, W).
+      y: features of shape (N, C, H, W).
+      
+    Returns:
+      cx_loss = contextual loss between x and y (Eq (1) in the paper)
+    """
+    assert x.size() == y.size()
+    N, C, H, W = x.size()   # e.g., 10 x 512 x 14 x 14. In this case, the number of points is 196 (14x14).
+
+    y_mu = y.mean(3).mean(2).mean(0).reshape(1, -1, 1, 1)
+
+    x_centered = x - y_mu
+    y_centered = y - y_mu
+    x_normalized = x_centered / torch.norm(x_centered, p=2, dim=1, keepdim=True)
+    y_normalized = y_centered / torch.norm(y_centered, p=2, dim=1, keepdim=True)
+
+    # The equation at the bottom of page 6 in the paper
+    # Vectorized computation of cosine similarity for each pair of x_i and y_j
+    x_normalized = x_normalized.reshape(N, C, -1)                                # (N, C, H*W)
+    y_normalized = y_normalized.reshape(N, C, -1)                                # (N, C, H*W)
+    cosine_sim = torch.bmm(x_normalized.transpose(1, 2), y_normalized)           # (N, H*W, H*W)
+
+    d = 1 - cosine_sim                                  # (N, H*W, H*W)  d[n, i, j] means d_ij for n-th data 
+    d_min, _ = torch.min(d, dim=2, keepdim=True)        # (N, H*W, 1)
+
+    # Eq (2)
+    d_tilde = d / (d_min + 1e-5)
+
+    # Eq(3)
+    w = torch.exp((1 - d_tilde) / h)
+
+    # Eq(4)
+    cx_ij = w / torch.sum(w, dim=2, keepdim=True)       # (N, H*W, H*W)
+
+    # Eq (1)
+    cx = torch.mean(torch.max(cx_ij, dim=1)[0], dim=1)  # (N, )
+    cx_loss = torch.mean(-torch.log(cx + 1e-5))
+    
+    return cx_loss
+
 
 
 class MultiAffineRegularizationLoss(nn.Module):
@@ -125,11 +170,16 @@ class VGGLoss(nn.Module):
     https://github.com/dxyang/StyleTransfer/blob/master/utils.py
     """
 
-    def __init__(self, weights=[1.0, 1.0, 1.0, 1.0, 1.0]):
+    def __init__(self, batchSize):
         super(VGGLoss, self).__init__()
         self.add_module('vgg', VGG19())
         self.criterion = torch.nn.L1Loss()
-        self.weights = weights
+        self.batchSize = batchSize
+        self.weights = [1.0, 1.0, 1.0, 1.0, 1.0]
+        self.layer = ['rel1_1','relu2_1','relu3_1','relu4_1'] 
+        # self.cx_layer = ['relu3_2','relu4_2']
+        self.eps=1e-8 
+        self.resample = Resample2d(4, 1, sigma=2)
 
     def compute_gram(self, x):
         b, ch, h, w = x.size()
@@ -138,7 +188,7 @@ class VGGLoss(nn.Module):
         G = f.bmm(f_T) / (h * w * ch)
         return G
         
-    def __call__(self, x, y):
+    def __call__(self, x, y, target, source, mutil_flow_list, used_layers, mask=None, use_bilinear_sampling=False):
         # Compute features
         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
 
@@ -156,8 +206,58 @@ class VGGLoss(nn.Module):
         style_loss += self.criterion(self.compute_gram(x_vgg['relu4_4']), self.compute_gram(y_vgg['relu4_4']))
         style_loss += self.criterion(self.compute_gram(x_vgg['relu5_2']), self.compute_gram(y_vgg['relu5_2']))
 
+        # PerceptualCorrectness
+        used_layers=sorted(used_layers, reverse=True)
+        correctnessloss = 0
+        for j in range(3):
+            self.target_vgg, self.source_vgg = self.vgg(target[j*self.batchSize:(j+1)*self.batchSize]), self.vgg(source[j*self.batchSize:(j+1)*self.batchSize])
+            flow_list = mutil_flow_list[j]
+            for i in range(len(flow_list)):
+                correctnessloss += self.calculate_loss(flow_list[i], self.layer[used_layers[i]], mask, use_bilinear_sampling)
 
-        return content_loss, style_loss
+        # CX
+        cxloss = contextual_loss(y_vgg['relu4_2'],x_vgg['relu4_2'])
+        return content_loss, style_loss, correctnessloss, cxloss
+
+    def calculate_loss(self, flow, layer, mask=None, use_bilinear_sampling=False):
+        target_vgg = self.target_vgg[layer]
+        source_vgg = self.source_vgg[layer]
+        [b, c, h, w] = target_vgg.shape
+
+        # maps = F.interpolate(maps, [h,w]).view(b,-1)
+        flow = F.interpolate(flow, [h,w])
+
+        target_all = target_vgg.view(b, c, -1)                      #[b C N2]
+        source_all = source_vgg.view(b, c, -1).transpose(1,2)       #[b N2 C]
+
+
+        source_norm = source_all/(source_all.norm(dim=2, keepdim=True)+self.eps)
+        target_norm = target_all/(target_all.norm(dim=1, keepdim=True)+self.eps)
+        try:
+            correction = torch.bmm(source_norm, target_norm)                       #[b N2 N2]
+        except:
+            print("An exception occurred")
+            print(source_norm.shape)
+            print(target_norm.shape)
+        (correction_max,max_indices) = torch.max(correction, dim=1)
+
+        # interple with bilinear sampling
+        if use_bilinear_sampling:
+            input_sample = self.bilinear_warp(source_vgg, flow).view(b, c, -1)
+        else:
+            input_sample = self.resample(source_vgg, flow).view(b, c, -1)
+
+        correction_sample = F.cosine_similarity(input_sample, target_all)    #[b 1 N2]
+        loss_map = torch.exp(-correction_sample/(correction_max+self.eps))
+        if mask is None:
+            loss = torch.mean(loss_map) - torch.exp(torch.tensor(-1).type_as(loss_map))
+        else:
+            mask=F.interpolate(mask, size=(target_vgg.size(2), target_vgg.size(3)))
+            mask=mask.view(-1, target_vgg.size(2)*target_vgg.size(3))
+            loss_map = loss_map - torch.exp(torch.tensor(-1).type_as(loss_map))
+            loss = torch.sum(mask * loss_map)/(torch.sum(mask)+self.eps)
+
+        return loss
 
 class StyleLoss(nn.Module):
     r"""
