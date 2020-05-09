@@ -36,9 +36,10 @@ class PoseFlowNet(BaseModel):
         self.opt = opt
         self.keys = ['head','body','leg']
         self.mask_id = {'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
+        self.target_mask_id = {'backgrand':[0],'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
         self.GPU = torch.device('cuda:0')
 
-        self.loss_names = ['correctness', 'regularization']
+        self.loss_names = ['correctness', 'regularization', 'layout']
         self.visual_names = ['input_P1','input_P2', 'warp', 'flow_fields',
                             'masks','input_BP1', 'input_BP2']
         self.model_names = {'G':['flow_net']}
@@ -53,6 +54,8 @@ class PoseFlowNet(BaseModel):
                                        attn_layer=self.opt.attn_layer, use_spect=opt.use_spect_g,
                                        )
         self.flow2color = util.flow2color()
+
+        self.l1loss = torch.nn.L1Loss()
 
         if self.isTrain:
             # define the loss functions
@@ -76,15 +79,22 @@ class PoseFlowNet(BaseModel):
             input_P1mask = input['P1masks'].cuda()
             input_P2mask = input['P2masks'].cuda()
 
+        res_mask = []
+        for key in self.target_mask_id.keys():
+            tmpmask = []
+            for k in self.target_mask_id[key]:
+                tmpmask.append(torch.where(input_P2mask[:,None]==k,torch.ones_like(input_P2mask[:,None]),torch.zeros_like(input_P2mask[:None])))
+            tmpmask = torch.stack(tmpmask)
+            res_mask.append(torch.sum(tmpmask,axis=0))
+        self.target_layout = torch.cat(res_mask,1)
+
         input_P1mask,_ = pose_utils.obtain_mask(input_P1mask,self.mask_id,self.keys)
-        input_P2mask,input_P2back = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
-        self.input_P1 = self.input_fullP1*input_P1mask[:self.opt.batchSize]
-        self.input_P2 = self.input_fullP2*input_P2mask[:self.opt.batchSize]
+        input_P2mask,_ = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
+        self.input_P1 = self.input_fullP1.repeat(3,1,1,1)*input_P1mask
+        self.input_P2 = self.input_fullP2.repeat(3,1,1,1)*input_P2mask
         self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.mask_id,self.keys,self.GPU,self.opt)
         self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.mask_id,self.keys,self.GPU,self.opt)
-        self.input_BP1 = self.input_BP1[:self.opt.batchSize]
-        self.input_BP2 = self.input_BP2[:self.opt.batchSize]
- 
+
 
         self.image_paths=[]
         for i in range(self.opt.batchSize):
@@ -93,7 +103,7 @@ class PoseFlowNet(BaseModel):
 
     def forward(self):
         """Run forward processing to get the inputs"""
-        self.flow_fields, self.masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2)
+        self.flow_fields, self.masks, self.layouts = self.net_G(self.input_P1, self.input_BP1, self.input_BP2)
         self.warp  = self.visi(self.flow_fields[-1])
 
     def visi(self, flow_field):
@@ -115,14 +125,24 @@ class PoseFlowNet(BaseModel):
         warp = torch.nn.functional.grid_sample(source_copy, grid, align_corners=True)
         return  warp
 
+    def layout_loss(self,gen,target):
+        _,_,h,w = gen.size()
+        target_resize = torch.nn.functional.interpolate(target, (h,w))
+        loss = self.l1loss(gen,target_resize)
+        return loss
 
     def backward_G(self):
         """Calculate training loss for the generator"""
-        loss_correctness = self.Correctness(self.input_P2, self.input_P1, self.flow_fields, self.opt.attn_layer)
+        loss_correctness = self.Correctness(self.input_P2[:self.opt.batchSize], self.input_P1[:self.opt.batchSize], self.flow_fields[0], self.opt.attn_layer)+\
+            self.Correctness(self.input_P2[self.opt.batchSize:2*self.opt.batchSize], self.input_P1[self.opt.batchSize:2*self.opt.batchSize], self.flow_fields[1], self.opt.attn_layer)+\
+                self.Correctness(self.input_P2[2*self.opt.batchSize:], self.input_P1[2*self.opt.batchSize:], self.flow_fields[2], self.opt.attn_layer)
         self.loss_correctness = loss_correctness * self.opt.lambda_correct
 
-        loss_regularization = self.Regularization(self.flow_fields)
+        loss_regularization = self.Regularization(self.flow_fields[0])+self.Regularization(self.flow_fields[1])+self.Regularization(self.flow_fields[2])
         self.loss_regularization = loss_regularization * self.opt.lambda_regularization
+
+        loss_layout = self.layout_loss(self.layouts[0],self.target_layout)+self.layout_loss(self.layouts[1],self.target_layout)
+        self.loss_layout = loss_layout*0.1
 
         total_loss = 0
         for name in self.loss_names:

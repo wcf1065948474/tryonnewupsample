@@ -246,6 +246,7 @@ class PoseFlowNet(nn.Module):
     def forward(self, source, source_B, target_B):
         flow_fields=[]
         masks=[]
+        outs={}
         inputs = torch.cat((source, source_B, target_B), 1) 
         out = self.block0(inputs)
         result=[out]
@@ -265,8 +266,9 @@ class PoseFlowNet(nn.Module):
                 flow_field, mask = self.attn_output(out, i)
                 flow_fields.append(flow_field)
                 masks.append(mask)
+                outs[i] = out
 
-        return flow_fields, masks
+        return flow_fields, masks, outs
 
     def attn_output(self, out, i):
         model = getattr(self, 'output' + str(i))
@@ -281,14 +283,37 @@ class PoseFlowNetGenerator(BaseNetwork):
         super(PoseFlowNetGenerator, self).__init__()
 
         self.layers = layers
+        self.encoder_layer = encoder_layer
+        self.decoder_layer = encoder_layer - min(attn_layer)
         self.attn_layer = attn_layer
 
         self.flow_net = PoseFlowNet(image_nc, structure_nc, ngf, img_f, 
                         encoder_layer, attn_layer=attn_layer,
                         norm=norm, activation=activation, 
                         use_spect=use_spect, use_coord= use_coord)
+        mult = 1
+        for i in range(encoder_layer-1):
+            mult = min(2 ** (i + 1), img_f//ngf)
+        for i in range(self.decoder_layer):
+            if self.encoder_layer-i-1 in self.attn_layer:
+                layout = nn.Sequential(nn.Conv2d(3*ngf*mult, 4, kernel_size=3,stride=1,padding=1,bias=True),
+                                          nn.Softmax2d())
+                setattr(self, 'layout' + str(i), layout)
 
     def forward(self, source, source_B, target_B):
-        flow_fields, masks = self.flow_net(source, source_B, target_B)
-        return flow_fields, masks
+        source_a, source_b, source_c = torch.chunk(source)
+        source_B_a, source_B_b, source_B_c = torch.chunk(source_B)
+        target_B_a, target_B_b, target_B_c = torch.chunk(target_B)
+
+        flow_fields_a, masks_a, outs_a = self.flow_net(source_a, source_B_a, target_B_a)
+        flow_fields_b, masks_b, outs_b = self.flow_net(source_b, source_B_b, target_B_b)
+        flow_fields_c, masks_c, outs_c = self.flow_net(source_c, source_B_c, target_B_c)
+
+        layouts = []
+        for i in range(self.decoder_layer):
+            if self.encoder_layer-i-1 in self.attn_layer:
+                model = getattr(self,'layout'+str(i))
+                tmp_out = torch.cat([outs_a[i],outs_b[i],outs_c[i]],1)
+                layouts.append(model(tmp_out))
+        return [flow_fields_a, flow_fields_b, flow_fields_c], [masks_a, masks_b, masks_c], layouts
 
