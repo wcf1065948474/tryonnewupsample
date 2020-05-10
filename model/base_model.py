@@ -111,6 +111,9 @@ class BaseModel():
             convert = getattr(self, 'flow2color')
             value = convert(value)
 
+        if 'layout' in name:
+            
+
         if value.size(1) == 18: # bone_map
             value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))
             value = pose_utils.draw_pose_from_map(value)[0]

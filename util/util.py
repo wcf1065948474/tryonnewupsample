@@ -124,6 +124,17 @@ def make_colorwheel():
         return colorwheel
 
 
+def layout2color(layout):
+    layout = layout.cpu().numpy()
+    layout = np.where(layout>0.5,np.ones_like(layout),torch.zeros_like(layout))
+    color=[(0,0,0),(255,0,0),(0,255,0),(0,0,255)]
+    b,c,h,w = layout.shape
+    color = np.zeros((b,h,w,3),dtype=np.uint8)
+    
+    for c_i in range(c):
+        color[np.where(layout[c_i]==1)] = color[c_i]
+    return color
+
 class flow2color():
 # code from: https://github.com/tomrunia/OpticalFlow_Visualization
 # MIT License

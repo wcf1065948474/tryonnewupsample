@@ -4,7 +4,7 @@ import data as Dataset
 from model import create_model
 import util.util as util
 # from util.visualizer import Visualizer
-full_time = 9*3600
+full_time = 8.5*3600
 max_epoch_time = 0
 
 if __name__ == '__main__':

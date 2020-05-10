@@ -41,8 +41,8 @@ class PoseFlowNet(BaseModel):
 
         self.loss_names = ['correctness', 'regularization', 'layout']
         self.visual_names = ['input_P1','input_P2', 'warp', 'flow_fields',
-                            'masks','input_BP1', 'input_BP2']
-        self.model_names = {'G':['flow_net']}
+                            'masks','input_BP1', 'input_BP2', 'layout', 'target_layout']
+        self.model_names = {'G':['flow_net','layout']}
 
         self.FloatTensor = torch.cuda.FloatTensor if len(self.gpu_ids)>0 \
             else torch.FloatTensor
@@ -83,10 +83,11 @@ class PoseFlowNet(BaseModel):
         for key in self.target_mask_id.keys():
             tmpmask = []
             for k in self.target_mask_id[key]:
-                tmpmask.append(torch.where(input_P2mask[:,None]==k,torch.ones_like(input_P2mask[:,None]),torch.zeros_like(input_P2mask[:None])))
+                tmpmask.append(torch.where(input_P2mask==k,torch.ones_like(input_P2mask),torch.zeros_like(input_P2mask)))
             tmpmask = torch.stack(tmpmask)
             res_mask.append(torch.sum(tmpmask,axis=0))
-        self.target_layout = torch.cat(res_mask,1)
+        self.target_layout = torch.stack(res_mask,1)
+        self.target_layout = self.target_layout.float()
 
         input_P1mask,_ = pose_utils.obtain_mask(input_P1mask,self.mask_id,self.keys)
         input_P2mask,_ = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)

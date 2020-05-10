@@ -291,19 +291,18 @@ class PoseFlowNetGenerator(BaseNetwork):
                         encoder_layer, attn_layer=attn_layer,
                         norm=norm, activation=activation, 
                         use_spect=use_spect, use_coord= use_coord)
-        mult = 1
-        for i in range(encoder_layer-1):
-            mult = min(2 ** (i + 1), img_f//ngf)
+
         for i in range(self.decoder_layer):
+            mult = min(2 ** (encoder_layer-i-2), img_f//ngf) if i != encoder_layer-1 else 1
             if self.encoder_layer-i-1 in self.attn_layer:
                 layout = nn.Sequential(nn.Conv2d(3*ngf*mult, 4, kernel_size=3,stride=1,padding=1,bias=True),
                                           nn.Softmax2d())
                 setattr(self, 'layout' + str(i), layout)
 
     def forward(self, source, source_B, target_B):
-        source_a, source_b, source_c = torch.chunk(source)
-        source_B_a, source_B_b, source_B_c = torch.chunk(source_B)
-        target_B_a, target_B_b, target_B_c = torch.chunk(target_B)
+        source_a, source_b, source_c = torch.chunk(source,3)
+        source_B_a, source_B_b, source_B_c = torch.chunk(source_B,3)
+        target_B_a, target_B_b, target_B_c = torch.chunk(target_B,3)
 
         flow_fields_a, masks_a, outs_a = self.flow_net(source_a, source_B_a, target_B_a)
         flow_fields_b, masks_b, outs_b = self.flow_net(source_b, source_B_b, target_B_b)
