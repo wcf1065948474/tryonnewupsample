@@ -311,9 +311,9 @@ class PoseFlowNetGenerator(BaseNetwork):
             norm_layer(3*32),
             nonlinearity,
             nn.UpsamplingBilinear2d(scale_factor=2),
-            self.spectral_norm(nn.Conv2d(3*32, 8, kernel_size=3, stride=1, padding=1), use_spect),
-            norm_layer(8),
-            nn.Softmax2d(),
+            self.spectral_norm(nn.Conv2d(3*32, 4, kernel_size=3, stride=1, padding=1), use_spect),
+            # norm_layer(8),
+            nn.Softmax2d()
             )
 
 

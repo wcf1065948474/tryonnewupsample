@@ -37,7 +37,7 @@ class BaseOptions():
         parser.add_argument('--dataset_mode', type=str, default='fashion')
         parser.add_argument('--fid_gt_path', type=str)
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order to make batches, otherwise takes them randomly')
-        parser.add_argument('--nThreads', default=8, type=int, help='# threads for loading data')
+        parser.add_argument('--nThreads', default=16, type=int, help='# threads for loading data')
         parser.add_argument('--max_dataset_size', type=int, default=sys.maxsize, help='Maximum number of samples allowed per dataset. If the dataset directory contains more than max_dataset_size, only a subset is loaded.')
 
         # display parameter define

@@ -81,9 +81,9 @@ def cords_to_map(cords, mask, IDS, KEYS, device, opt, affine_matrix=None, sigma=
             for i, point in enumerate(cord):
                 if point[0] == MISSING_VALUE or point[1] == MISSING_VALUE:
                     continue
-                if j not in IDS[k]:
+                if i not in IDS[k]:
                     continue
-                if affine_matrix[j] is not None:
+                if affine_matrix is not None:
                     point_ =np.dot(affine_matrix[j], np.matrix([point[1], point[0], 1]).reshape(3,1))
                     point_0 = int(point_[1])
                     point_1 = int(point_[0])

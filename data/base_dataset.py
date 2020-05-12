@@ -66,7 +66,7 @@ class BaseDataset(data.Dataset):
         
         center = (P1_img.size[0] * 0.5 + 0.5, P1_img.size[1] * 0.5 + 0.5)
         affine_matrix = self.get_affine_matrix(center=center, angle=0, translate=(0,0), scale=1, shear=0)
-        if self.opt.affine and random.randint(0,10)==0:
+        if self.opt.affine and random.randint(0,10)<=9:
             P1_name = P2_name
             P1_img = Image.open(P2_path).convert('RGB')
             P1_mask = Image.open(P2mask_path)

@@ -115,7 +115,7 @@ class Pose(BaseModel):
         self.input_P2mask = input_P2mask.float()
         self.input_P1backmask = input_P1backmask
         self.input_P2backmask = input_P2backmask
-        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.mask_id,self.keys,self.GPU,self.opt)
+        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.mask_id,self.keys,self.GPU,self.opt,input['affine'])
         self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.mask_id,self.keys,self.GPU,self.opt)
  
 

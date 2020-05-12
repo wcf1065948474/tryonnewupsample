@@ -24,7 +24,7 @@ class PoseFlowNet(BaseModel):
         parser.add_argument('--attn_layer', action=util.StoreList, metavar="VAL1,VAL2...", help="The number layers away from output layer") 
         parser.add_argument('--kernel_size', action=util.StoreDictKeyPair, metavar="KEY1=VAL1,KEY2=VAL2...", help="Kernel Size of Local Attention Block")
 
-        parser.add_argument('--lambda_correct', type=float, default=20.0, help='weight for the Sampling Correctness loss')
+        parser.add_argument('--lambda_correct', type=float, default=5.0, help='weight for the Sampling Correctness loss')
         parser.add_argument('--lambda_regularization', type=float, default=0.01, help='weight for Regularization loss')
         parser.add_argument('--use_spect_g', action='store_false')
         parser.set_defaults(use_spect_g=False)
@@ -37,7 +37,8 @@ class PoseFlowNet(BaseModel):
         self.keys = ['head','body','leg']
         self.mask_id = {'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
         self.channel_id = {'head':[0,14,15,16,17],'body':[1,2,3,4,5,6,7,8,11],'leg':[8,9,10,11,12,13]}
-        self.target_mask_id = {'backgrand':[0],'hair':[1,2],'head':[4,13],'arm':[14,15],'body':[3,5,6,7,10,11],'leg':[16,17],'pants':[9,12],'shoes':[8,18,19]}
+        # self.target_mask_id = {'backgrand':[0],'hair':[1,2],'head':[4,13],'arm':[14,15],'body':[3,5,6,7,10,11],'leg':[16,17],'pants':[9,12],'shoes':[8,18,19]}
+        self.target_mask_id = {'backgrand':[0],'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
         self.GPU = torch.device('cuda:0')
 
         self.loss_names = ['correctness', 'regularization', 'layout']
@@ -96,7 +97,7 @@ class PoseFlowNet(BaseModel):
         self.input_P1 = self.input_fullP1.repeat(3,1,1,1)*input_P1mask
         self.input_P2 = self.input_fullP2.repeat(3,1,1,1)*input_P2mask
         self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
-        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
+        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.channel_id,self.keys,self.GPU,self.opt)
 
 
         self.image_paths=[]
@@ -140,7 +141,7 @@ class PoseFlowNet(BaseModel):
         self.loss_regularization = loss_regularization * self.opt.lambda_regularization
 
         loss_layout = self.l1loss(self.layout,self.target_layout)
-        self.loss_layout = loss_layout*0.1
+        self.loss_layout = loss_layout*1.0
 
         total_loss = 0
         for name in self.loss_names:
