@@ -112,7 +112,9 @@ class BaseModel():
             value = convert(value)
 
         if 'layout' in name:
-            
+            convert = getattr(self, 'layout2color')
+            value = convert(value)
+
 
         if value.size(1) == 18: # bone_map
             value = np.transpose(value[0].detach().cpu().numpy(),(1,2,0))

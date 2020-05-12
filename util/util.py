@@ -9,6 +9,9 @@ import argparse
 from natsort import natsorted
 
 
+label_colours = [(1,1,1), (0.5,0,0), (1,0,0), (0,0.33,0), (0.66,0,0.2), (1,0.33,0), (0,0,0.33), (0,0.46,0.86)]
+#, (85,85,0), (0,85,85), (85,51,0), (52,86,128), (0,128,0), (0,0,255), (51,170,221), (0,255,255), (85,255,170), (170,255,85), (255,255,0), (255,170,0)]
+
 
 # convert a tensor into a numpy array
 def tensor2im(image_tensor, bytes=255.0, imtype=np.uint8):
@@ -125,15 +128,17 @@ def make_colorwheel():
 
 
 def layout2color(layout):
-    layout = layout.cpu().numpy()
-    layout = np.where(layout>0.5,np.ones_like(layout),torch.zeros_like(layout))
-    color=[(0,0,0),(255,0,0),(0,255,0),(0,0,255)]
-    b,c,h,w = layout.shape
-    color = np.zeros((b,h,w,3),dtype=np.uint8)
-    
-    for c_i in range(c):
-        color[np.where(layout[c_i]==1)] = color[c_i]
-    return color
+    layout = layout.detach()
+    layout = torch.argmax(layout,1)
+    b,h,w = layout.size()
+    output = torch.zeros((b,3,h,w))
+
+    for b_i in range(b):
+        for h_i in range(h):
+            for w_i in range(w):
+                output[b_i,:,h_i,w_i] = torch.cuda.FloatTensor(label_colours[layout[b_i,h_i,w_i]])
+
+    return output
 
 class flow2color():
 # code from: https://github.com/tomrunia/OpticalFlow_Visualization

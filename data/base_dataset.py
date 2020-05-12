@@ -18,9 +18,9 @@ class BaseDataset(data.Dataset):
 
     @staticmethod
     def modify_commandline_options(parser, is_train):
-        parser.add_argument('--angle', type=float, default=False)
-        parser.add_argument('--shift', type=float, default=False)
-        parser.add_argument('--scale', type=float, default=False)
+        parser.add_argument('--angle', type=float, default=(-30.0,30.0))
+        parser.add_argument('--shift', type=float, default=(-30.0,30.0))
+        parser.add_argument('--scale', type=float, default=(0.7,1.4))
         return parser
 
     def initialize(self, opt):
@@ -61,36 +61,36 @@ class BaseDataset(data.Dataset):
 
         P1_img = Image.open(P1_path).convert('RGB')
         P2_img = Image.open(P2_path).convert('RGB')
-        P1_mask = np.array(Image.open(P1mask_path))
-        P2_mask = np.array(Image.open(P2mask_path))
+        P1_mask = Image.open(P1mask_path)
+        P2_mask = Image.open(P2mask_path)
         
-        P1masks = torch.from_numpy(P1_mask)
+        center = (P1_img.size[0] * 0.5 + 0.5, P1_img.size[1] * 0.5 + 0.5)
+        affine_matrix = self.get_affine_matrix(center=center, angle=0, translate=(0,0), scale=1, shear=0)
+        if self.opt.affine and random.randint(0,10)==0:
+            P1_name = P2_name
+            P1_img = Image.open(P2_path).convert('RGB')
+            P1_mask = Image.open(P2mask_path)
+            angle, shift, scale = self.getRandomAffineParam()
+            P1_img = F.affine(P1_img, angle=angle, translate=shift, scale=scale, shear=0, fillcolor=(128, 128, 128))
+            P1_mask = F.affine(P1_mask,angle=angle,translate=shift, scale=scale, shear=0, fillcolor=(0))
+            center = (P1_img.size[0] * 0.5 + 0.5, P1_img.size[1] * 0.5 + 0.5)
+            affine_matrix = self.get_affine_matrix(center=center, angle=angle, translate=shift, scale=scale, shear=0)
+
+        P1masks = torch.from_numpy(np.array(P1_mask))
         BP1 = self.obtain_bone(P1_name)
         P1 = self.trans(P1_img)
-
-        P2masks = torch.from_numpy(P2_mask)
+        P2masks = torch.from_numpy(np.array(P2_mask))
         BP2 = self.obtain_bone(P2_name)
         P2 = self.trans(P2_img)
 
-        return {'P1': P1, 'BP1': BP1,'P1masks':P1masks,'P2': P2, 'BP2': BP2,'P2masks':P2masks,
+        affine_matrix = np.array(affine_matrix)
+        return {'P1': P1, 'BP1': BP1,'P1masks':P1masks,'P2': P2, 'BP2': BP2,'P2masks':P2masks,'affine':affine_matrix,
                 'P1_path': P1_name, 'P2_path': P2_name}
 
     def obtain_bone(self, name):
         string = self.annotation_file.loc[name]
         array = pose_utils.load_pose_cords_from_strings(string['keypoints_y'], string['keypoints_x'])
         return array
-
-    # def obtain_mask(self,full_mask):
-    #     res_mask = {}
-    #     for key in self.mask_id.keys():
-    #         res_mask[key] = []
-    #         for i in self.mask_id[key]:
-    #             res_mask[key].append(torch.where(full_mask==i,torch.ones_like(full_mask),torch.zeros_like(full_mask)))
-    #         res_mask[key] = torch.stack(res_mask[key])
-    #         res_mask[key] = torch.sum(res_mask[key],axis=0)
-    #     backgrand_mask = torch.where(full_mask==0,torch.ones_like(full_mask),torch.zeros_like(full_mask))
-    #     return res_mask,backgrand_mask
-
    
 
     def __len__(self):

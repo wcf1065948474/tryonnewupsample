@@ -246,7 +246,6 @@ class PoseFlowNet(nn.Module):
     def forward(self, source, source_B, target_B):
         flow_fields=[]
         masks=[]
-        outs={}
         inputs = torch.cat((source, source_B, target_B), 1) 
         out = self.block0(inputs)
         result=[out]
@@ -266,9 +265,8 @@ class PoseFlowNet(nn.Module):
                 flow_field, mask = self.attn_output(out, i)
                 flow_fields.append(flow_field)
                 masks.append(mask)
-                outs[i] = out
 
-        return flow_fields, masks, outs
+        return flow_fields, masks, out
 
     def attn_output(self, out, i):
         model = getattr(self, 'output' + str(i))
@@ -286,33 +284,60 @@ class PoseFlowNetGenerator(BaseNetwork):
         self.encoder_layer = encoder_layer
         self.decoder_layer = encoder_layer - min(attn_layer)
         self.attn_layer = attn_layer
+        norm_layer = get_norm_layer(norm_type=norm)
+        nonlinearity = get_nonlinearity_layer(activation_type=activation)
 
         self.flow_net = PoseFlowNet(image_nc, structure_nc, ngf, img_f, 
                         encoder_layer, attn_layer=attn_layer,
                         norm=norm, activation=activation, 
                         use_spect=use_spect, use_coord= use_coord)
 
-        for i in range(self.decoder_layer):
-            mult = min(2 ** (encoder_layer-i-2), img_f//ngf) if i != encoder_layer-1 else 1
-            if self.encoder_layer-i-1 in self.attn_layer:
-                layout = nn.Sequential(nn.Conv2d(3*ngf*mult, 4, kernel_size=3,stride=1,padding=1,bias=True),
-                                          nn.Softmax2d())
-                setattr(self, 'layout' + str(i), layout)
+        # for i in range(2):
+        #     input_nc = ngf*3*(2-i)
+        #     if i==1:
+        #         output_nc = 8
+        #     else:
+        #         output_nc = input_nc-3*ngf
+        #     layoutup = ResBlockDecoder(input_nc, output_nc, output_nc, norm_layer, 
+        #                             nonlinearity, use_spect, use_coord)
+        #     setattr(self, 'layoutup'+str(i), layoutup)
+
+
+        self.layout = nn.Sequential(
+            norm_layer(3*64),
+            nonlinearity,
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            self.spectral_norm(nn.Conv2d(3*64, 3*32, kernel_size=3, stride=1, padding=1), use_spect),
+            norm_layer(3*32),
+            nonlinearity,
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            self.spectral_norm(nn.Conv2d(3*32, 8, kernel_size=3, stride=1, padding=1), use_spect),
+            norm_layer(8),
+            nn.Softmax2d(),
+            )
+
+
+    def spectral_norm(self, module, use_spect=True):
+        """use spectral normal layer to stable the training process"""
+        if use_spect:
+            return SpectralNorm(module)
+        else:
+            return module
 
     def forward(self, source, source_B, target_B):
         source_a, source_b, source_c = torch.chunk(source,3)
         source_B_a, source_B_b, source_B_c = torch.chunk(source_B,3)
         target_B_a, target_B_b, target_B_c = torch.chunk(target_B,3)
 
-        flow_fields_a, masks_a, outs_a = self.flow_net(source_a, source_B_a, target_B_a)
-        flow_fields_b, masks_b, outs_b = self.flow_net(source_b, source_B_b, target_B_b)
-        flow_fields_c, masks_c, outs_c = self.flow_net(source_c, source_B_c, target_B_c)
+        flow_fields_a, masks_a, out_a = self.flow_net(source_a, source_B_a, target_B_a)
+        flow_fields_b, masks_b, out_b = self.flow_net(source_b, source_B_b, target_B_b)
+        flow_fields_c, masks_c, out_c = self.flow_net(source_c, source_B_c, target_B_c)
 
-        layouts = []
-        for i in range(self.decoder_layer):
-            if self.encoder_layer-i-1 in self.attn_layer:
-                model = getattr(self,'layout'+str(i))
-                tmp_out = torch.cat([outs_a[i],outs_b[i],outs_c[i]],1)
-                layouts.append(model(tmp_out))
-        return [flow_fields_a, flow_fields_b, flow_fields_c], [masks_a, masks_b, masks_c], layouts
+        fulllayout = torch.cat([out_a,out_b,out_c],1)
+        fulllayout = self.layout(fulllayout)
+        # for i in range(2):
+        #     model = getattr(self,'layoutup'+str(i))
+        #     layout = model(layout)
+        
+        return [flow_fields_a, flow_fields_b, flow_fields_c], [masks_a, masks_b, masks_c], fulllayout
 

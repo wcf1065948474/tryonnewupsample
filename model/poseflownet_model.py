@@ -36,7 +36,8 @@ class PoseFlowNet(BaseModel):
         self.opt = opt
         self.keys = ['head','body','leg']
         self.mask_id = {'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
-        self.target_mask_id = {'backgrand':[0],'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
+        self.channel_id = {'head':[0,14,15,16,17],'body':[1,2,3,4,5,6,7,8,11],'leg':[8,9,10,11,12,13]}
+        self.target_mask_id = {'backgrand':[0],'hair':[1,2],'head':[4,13],'arm':[14,15],'body':[3,5,6,7,10,11],'leg':[16,17],'pants':[9,12],'shoes':[8,18,19]}
         self.GPU = torch.device('cuda:0')
 
         self.loss_names = ['correctness', 'regularization', 'layout']
@@ -54,6 +55,7 @@ class PoseFlowNet(BaseModel):
                                        attn_layer=self.opt.attn_layer, use_spect=opt.use_spect_g,
                                        )
         self.flow2color = util.flow2color()
+        self.layout2color = util.layout2color
 
         self.l1loss = torch.nn.L1Loss()
 
@@ -93,8 +95,8 @@ class PoseFlowNet(BaseModel):
         input_P2mask,_ = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
         self.input_P1 = self.input_fullP1.repeat(3,1,1,1)*input_P1mask
         self.input_P2 = self.input_fullP2.repeat(3,1,1,1)*input_P2mask
-        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.mask_id,self.keys,self.GPU,self.opt)
-        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.mask_id,self.keys,self.GPU,self.opt)
+        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
+        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
 
 
         self.image_paths=[]
@@ -104,13 +106,13 @@ class PoseFlowNet(BaseModel):
 
     def forward(self):
         """Run forward processing to get the inputs"""
-        self.flow_fields, self.masks, self.layouts = self.net_G(self.input_P1, self.input_BP1, self.input_BP2)
-        self.warp  = self.visi(self.flow_fields[-1])
+        self.flow_fields, self.masks, self.layout = self.net_G(self.input_P1, self.input_BP1, self.input_BP2)
+        self.warp  = self.visi(self.flow_fields[0][-1])
 
     def visi(self, flow_field):
         [b,_,h,w] = flow_field.size()
 
-        source_copy = torch.nn.functional.interpolate(self.input_P1, (h,w))
+        source_copy = torch.nn.functional.interpolate(self.input_P1[:self.opt.batchSize], (h,w))
 
         x = torch.arange(w).view(1, -1).expand(h, -1).float()
         y = torch.arange(h).view(-1, 1).expand(-1, w).float()
@@ -126,11 +128,6 @@ class PoseFlowNet(BaseModel):
         warp = torch.nn.functional.grid_sample(source_copy, grid, align_corners=True)
         return  warp
 
-    def layout_loss(self,gen,target):
-        _,_,h,w = gen.size()
-        target_resize = torch.nn.functional.interpolate(target, (h,w))
-        loss = self.l1loss(gen,target_resize)
-        return loss
 
     def backward_G(self):
         """Calculate training loss for the generator"""
@@ -142,7 +139,7 @@ class PoseFlowNet(BaseModel):
         loss_regularization = self.Regularization(self.flow_fields[0])+self.Regularization(self.flow_fields[1])+self.Regularization(self.flow_fields[2])
         self.loss_regularization = loss_regularization * self.opt.lambda_regularization
 
-        loss_layout = self.layout_loss(self.layouts[0],self.target_layout)+self.layout_loss(self.layouts[1],self.target_layout)
+        loss_layout = self.l1loss(self.layout,self.target_layout)
         self.loss_layout = loss_layout*0.1
 
         total_loss = 0
