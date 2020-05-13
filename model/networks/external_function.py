@@ -216,7 +216,7 @@ class VGGLoss(nn.Module):
                 correctnessloss += self.calculate_loss(flow_list[i], self.layer[used_layers[i]], mask, use_bilinear_sampling)
 
         # CX
-        cxloss = contextual_loss(y_vgg['relu4_2'],x_vgg['relu4_2'])
+        cxloss = contextual_loss(x_vgg['relu4_2'],y_vgg['relu4_2'])
         return content_loss, style_loss, correctnessloss, cxloss
 
     def calculate_loss(self, flow, layer, mask=None, use_bilinear_sampling=False):

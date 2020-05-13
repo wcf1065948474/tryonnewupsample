@@ -38,9 +38,9 @@ class PoseGenerator(BaseNetwork):
 
         source_B_a,source_B_b,source_B_c = torch.chunk(source_B,3)
         target_B_a,target_B_b,target_B_c = torch.chunk(target_B,3)
-        flow_fields_a, masks_a = self.flow_net(source_a, source_B_a, target_B_a)
-        flow_fields_b, masks_b = self.flow_net(source_b, source_B_b, target_B_b)
-        flow_fields_c, masks_c = self.flow_net(source_c, source_B_c, target_B_c)
+        flow_fields_a, masks_a, _ = self.flow_net(source_a, source_B_a, target_B_a)
+        flow_fields_b, masks_b, _ = self.flow_net(source_b, source_B_b, target_B_b)
+        flow_fields_c, masks_c, _ = self.flow_net(source_c, source_B_c, target_B_c)
 
         b,c,h,w = target_B.size()
         target_B = target_B.view(3,-1,c,h,w)
