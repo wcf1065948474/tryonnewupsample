@@ -27,14 +27,7 @@ class PoseGenerator(BaseNetwork):
                                                 norm, activation, attn_layer, extractor_kz, use_spect, use_coord)
         self.flow_net = PoseFlowNet(image_nc, structure_nc, ngf=32, img_f=256, encoder_layer=5, 
                                     attn_layer=attn_layer, norm=norm, activation=activation,
-                                    use_spect=use_spect, use_coord=use_coord)       
-
-    def spectral_norm(self, module, use_spect=True):
-        """use spectral normal layer to stable the training process"""
-        if use_spect:
-            return SpectralNorm(module)
-        else:
-            return module
+                                    use_spect=use_spect, use_coord=use_coord)
 
         self.layout = nn.Sequential(
             norm_layer(3*64),
@@ -48,6 +41,15 @@ class PoseGenerator(BaseNetwork):
             # norm_layer(8),
             nn.Softmax2d()
             )
+
+    def spectral_norm(self, module, use_spect=True):
+        """use spectral normal layer to stable the training process"""
+        if use_spect:
+            return SpectralNorm(module)
+        else:
+            return module
+
+
 
     def forward(self, source, source_B, target_B, target_B_full, source_full, source_body_mask, target_mask, target_backgrand_mask):
         source_a,source_b,source_c = torch.chunk(source,3)
