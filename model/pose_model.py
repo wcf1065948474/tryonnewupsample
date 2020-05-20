@@ -51,7 +51,7 @@ class Pose(BaseModel):
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
         self.loss_names = ['app_gen', 'correctness_gen', 'content_gen', 'style_gen', 'regularization',
-                           'ad_img_gen', 'ad_seg_gen', 'dis_img_gen', 'dis_seg_gen', 'cx', 'layout_l1', 'layout_gan']
+                           'ad_img_gen', 'ad_seg_gen', 'dis_img_gen', 'dis_seg_gen', 'cx', 'layout_l1']
 
         self.visual_names = ['input_P1','input_P2', 'img_gen', 'flow_fields', 'masks', 'layout', 'target_layout']
         self.model_names = {'G':['source','target','flow_net'],'imgD':[],'segD':[]}
@@ -189,8 +189,8 @@ class Pose(BaseModel):
         loss_app_gen = self.L1loss(self.img_gen, self.input_fullP2) #注意有无背景！
         self.loss_app_gen = loss_app_gen * self.opt.lambda_rec
         
-        loss_layout = self.L1loss(self.layout,self.target_layout)
-        self.loss_layout = loss_layout*1.0
+        loss_layout_l1 = self.L1loss(self.layout,self.target_layout)
+        self.loss_layout_l1 = loss_layout_l1*1.0
 
         # Calculate Sampling Correctness Loss        
         # loss_correctness_gen = self.Correctness(self.input_P2[:self.opt.batchSize], self.input_P1[:self.opt.batchSize], self.flow_fields[0], self.opt.attn_layer)+\
