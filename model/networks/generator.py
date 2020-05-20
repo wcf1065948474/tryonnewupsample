@@ -18,6 +18,8 @@ class PoseGenerator(BaseNetwork):
                 norm='batch', activation='ReLU', attn_layer=[1,2], extractor_kz={'1':5,'2':5}, use_spect=True, use_coord=False):  
         super(PoseGenerator, self).__init__()
         # self.backgrand = InpaintSANet(c_dim=4)
+        norm_layer = get_norm_layer(norm_type=norm)
+        nonlinearity = get_nonlinearity_layer(activation_type=activation)
 
         self.source = PoseSourceNet(image_nc, ngf, img_f, layers, 
                                                     norm, activation, use_spect, use_coord)
@@ -27,8 +29,27 @@ class PoseGenerator(BaseNetwork):
                                     attn_layer=attn_layer, norm=norm, activation=activation,
                                     use_spect=use_spect, use_coord=use_coord)       
 
+    def spectral_norm(self, module, use_spect=True):
+        """use spectral normal layer to stable the training process"""
+        if use_spect:
+            return SpectralNorm(module)
+        else:
+            return module
 
-    def forward(self, source, source_B, target_B, source_full, source_body_mask, target_mask, target_backgrand_mask):
+        self.layout = nn.Sequential(
+            norm_layer(3*64),
+            nonlinearity,
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            self.spectral_norm(nn.Conv2d(3*64, 3*32, kernel_size=3, stride=1, padding=1), use_spect),
+            norm_layer(3*32),
+            nonlinearity,
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            self.spectral_norm(nn.Conv2d(3*32, 4, kernel_size=3, stride=1, padding=1), use_spect),
+            # norm_layer(8),
+            nn.Softmax2d()
+            )
+
+    def forward(self, source, source_B, target_B, target_B_full, source_full, source_body_mask, target_mask, target_backgrand_mask):
         source_a,source_b,source_c = torch.chunk(source,3)
         feature_list_a = self.source(source_a)
         feature_list_b = self.source(source_b)
@@ -38,20 +59,23 @@ class PoseGenerator(BaseNetwork):
 
         source_B_a,source_B_b,source_B_c = torch.chunk(source_B,3)
         target_B_a,target_B_b,target_B_c = torch.chunk(target_B,3)
-        flow_fields_a, masks_a, _ = self.flow_net(source_a, source_B_a, target_B_a)
-        flow_fields_b, masks_b, _ = self.flow_net(source_b, source_B_b, target_B_b)
-        flow_fields_c, masks_c, _ = self.flow_net(source_c, source_B_c, target_B_c)
+        flow_fields_a, masks_a, out_a = self.flow_net(source_a, source_B_a, target_B_a)
+        flow_fields_b, masks_b, out_b = self.flow_net(source_b, source_B_b, target_B_b)
+        flow_fields_c, masks_c, out_c = self.flow_net(source_c, source_B_c, target_B_c)
 
-        b,c,h,w = target_B.size()
-        target_B = target_B.view(3,-1,c,h,w)
-        target_B = torch.sum(target_B,0)
-        image_gen = self.target(target_B, [feature_list_a,feature_list_b,feature_list_c], [flow_fields_a,flow_fields_b,flow_fields_c], [masks_a,masks_b,masks_c], target_mask)
+        fulllayout = torch.cat([out_a,out_b,out_c],1)
+        fulllayout = self.layout(fulllayout)
+
+        # b,c,h,w = target_B.size()
+        # target_B = target_B.view(3,-1,c,h,w)
+        # target_B = torch.sum(target_B,0)
+        image_gen = self.target(target_B_full, [feature_list_a,feature_list_b,feature_list_c], [flow_fields_a,flow_fields_b,flow_fields_c], [masks_a,masks_b,masks_c], target_mask)
         # b,c,h,w = image_gen.size()
         # gen = image_gen*target_mask
         # gen = gen.view(3,-1,c,h,w)
         # gen = torch.sum(gen,0)
         # image_gen = image_gen*(1.0-target_backgrand_mask)# + source_backgrand*target_backgrand_mask
-        return image_gen, [flow_fields_a,flow_fields_b,flow_fields_c], [masks_a,masks_b,masks_c]
+        return image_gen, [flow_fields_a,flow_fields_b,flow_fields_c], [masks_a,masks_b,masks_c], fulllayout
 
     def forward_hook_function(self, source, source_B, target_B):
         feature_list = self.source(source)
@@ -280,9 +304,7 @@ class PoseFlowNetGenerator(BaseNetwork):
                 activation='ReLU', encoder_layer=5, attn_layer=[1,2], use_spect=True, use_coord=False):  
         super(PoseFlowNetGenerator, self).__init__()
 
-        self.layers = layers
         self.encoder_layer = encoder_layer
-        self.decoder_layer = encoder_layer - min(attn_layer)
         self.attn_layer = attn_layer
         norm_layer = get_norm_layer(norm_type=norm)
         nonlinearity = get_nonlinearity_layer(activation_type=activation)
