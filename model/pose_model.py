@@ -181,7 +181,7 @@ class Pose(BaseModel):
         base_function._unfreeze(self.net_imgD)
         base_function._unfreeze(self.net_segD)
         self.loss_dis_img_gen = self.backward_D_basic(self.net_imgD, self.input_fullP2, self.img_gen) #注意有无背景！
-        self.loss_dis_seg_gan = self.backward_D_basic(self.net_segD, self.target_layout, self.layout)
+        self.loss_dis_seg_gen = self.backward_D_basic(self.net_segD, self.target_layout, self.layout)
 
     def backward_G(self):
         """Calculate training loss for the generator"""
