@@ -54,7 +54,7 @@ class Pose(BaseModel):
                            'ad_img_gen', 'ad_seg_gen', 'dis_img_gen', 'dis_seg_gen', 'cx', 'layout_l1']
 
         self.visual_names = ['input_P1','input_P2', 'img_gen', 'flow_fields', 'masks', 'layout', 'target_layout']
-        self.model_names = {'G':['source','target','flow_net'],'imgD':[],'segD':[]}
+        self.model_names = {'G':['source','target','flow_net','layout'],'imgD':[],'segD':[]}
 
         self.keys = ['head','body','leg']
         self.mask_id = {'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
