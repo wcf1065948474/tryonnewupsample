@@ -54,8 +54,8 @@ class BaseDataset(data.Dataset):
 
     def __getitem__(self, index):
         P1_name, P2_name = self.name_pairs[index]
-        P1_path = os.path.join(self.image_dir, P1_name) # person 1
-        P2_path = os.path.join(self.image_dir, P2_name) # person 2
+        P1_path = os.path.join(self.image_dir, P1_name.split('.')[0]+'.bmp') # person 1
+        P2_path = os.path.join(self.image_dir, P2_name.split('.')[0]+'.bmp') # person 2
         P1mask_path = os.path.join(self.mask_dir,P1_name.split('.')[0]+'.png')
         P2mask_path = os.path.join(self.mask_dir,P2_name.split('.')[0]+'.png')
 

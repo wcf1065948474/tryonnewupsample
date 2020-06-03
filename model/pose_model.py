@@ -146,11 +146,11 @@ class Pose(BaseModel):
 
     def test(self):
         """Forward function used in test time"""
-        img_gen, flow_fields, masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.target_BP, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
-        res_img = torch.cat([self.input_fullP1*(1.0-self.input_P1backmask),self.input_fullP2*(1.0-self.input_P2backmask),img_gen],3)
+        img_gen, flow_fields, masks, layout = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.target_BP, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
+        res_img = torch.cat([self.input_fullP1[:,:,:,40:216],self.input_fullP2[:,:,:,40:216],img_gen[:,:,:,40:216]],3)
         self.save_results(res_img,self.opt.results_dir, data_name='vis')
         if self.opt.calcfid:
-            self.save_results(img_gen,'calc_fid_dir', data_name='gen')
+            self.save_results(img_gen,'calc_fid_dir', data_name='gen',data_ext='bmp')
 
     def forward(self):
         """Run forward processing to get the inputs"""
