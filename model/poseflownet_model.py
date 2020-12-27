@@ -96,8 +96,8 @@ class PoseFlowNet(BaseModel):
         input_P2mask,_ = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
         self.input_P1 = self.input_fullP1.repeat(3,1,1,1)*input_P1mask
         self.input_P2 = self.input_fullP2.repeat(3,1,1,1)*input_P2mask
-        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
-        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],self.channel_id,self.keys,self.GPU,self.opt)
+        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
+        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.channel_id,self.keys,self.GPU,self.opt)
 
 
         self.image_paths=[]

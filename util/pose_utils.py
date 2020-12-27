@@ -73,7 +73,7 @@ def cords_to_map_numpy(cords, img_size, mask,old_size=None, affine_matrix=None, 
     return result
 
 
-def cords_to_map(cords, IDS, KEYS, device, opt, affine_matrix=None, sigma=6):
+def cords_to_map(cords, mask, IDS, KEYS, device, opt, affine_matrix=None, sigma=6):
     cords = cords.float()
     result = torch.zeros((3*opt.batchSize,18,256,256), device=device)
     for n,k in enumerate(KEYS):
@@ -93,25 +93,6 @@ def cords_to_map(cords, IDS, KEYS, device, opt, affine_matrix=None, sigma=6):
                 xx, yy = torch.meshgrid(torch.arange(256.,device=device), torch.arange(256.,device=device))
                 result[n*opt.batchSize+j,i,...] = torch.exp(-((xx - point_0) ** 2 + (yy - point_1) ** 2) / (2 * sigma ** 2))
     return result
-
-def cords_to_map_full(cords, device, opt, affine_matrix=None, sigma=6):
-    cords = cords.float()
-    result = torch.zeros((opt.batchSize,18,256,256), device=device)
-    for j,cord in enumerate(cords):
-        for i,point in enumerate(cord):
-            if point[0] == MISSING_VALUE or point[1] == MISSING_VALUE:
-                continue
-            if affine_matrix is not None:
-                point_ =np.dot(affine_matrix[j], np.matrix([point[1], point[0], 1]).reshape(3,1))
-                point_0 = int(point_[1])
-                point_1 = int(point_[0])
-            else:
-                point_0 = int(point[0])
-                point_1 = int(point[1])
-            xx, yy = torch.meshgrid(torch.arange(256.,device=device), torch.arange(256.,device=device))
-            result[j,i,...] = torch.exp(-((xx - point_0) ** 2 + (yy - point_1) ** 2) / (2 * sigma ** 2))
-    return result
-
 
 def obtain_mask(full_mask,IDS,KEYS):
     res_mask = []

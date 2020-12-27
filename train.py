@@ -4,7 +4,7 @@ import data as Dataset
 from model import create_model
 import util.util as util
 # from util.visualizer import Visualizer
-full_time = 8.5*3600
+full_time = 9*3600
 max_epoch_time = 0
 
 if __name__ == '__main__':
@@ -53,16 +53,7 @@ if __name__ == '__main__':
                 for k in losses.keys():
                     loss = loss + k + str(losses[k])
                 print('epoch={},total={},loss={},time={}'.format(epoch, total_iteration, loss, t))
-
-
-        #     if total_iteration % opt.eval_iters_freq == 0:
-        #         model.eval() 
-        #         if hasattr(model, 'eval_metric_name'):
-        #             eval_results = model.get_current_eval_results()  
-        #             visualizer.print_current_eval(epoch, total_iteration, eval_results)
-        #             if opt.display_id > 0:
-        #                 visualizer.plot_current_score(total_iteration, eval_results)
-                    
+      
 
         epoch_time = time.time() - epoch_start_time
         full_time -= epoch_time

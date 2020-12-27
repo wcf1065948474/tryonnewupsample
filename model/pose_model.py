@@ -51,16 +51,13 @@ class Pose(BaseModel):
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
         self.loss_names = ['app_gen', 'correctness_gen', 'content_gen', 'style_gen', 'regularization',
-                           'ad_img_gen', 'ad_seg_gen', 'dis_img_gen', 'dis_seg_gen', 'cx', 'layout_l1']
+                           'ad_gen', 'dis_img_gen', 'cx']
 
-        self.visual_names = ['input_P1','input_P2', 'img_gen', 'flow_fields', 'masks', 'layout', 'target_layout']
-        self.model_names = {'G':['source','target','flow_net','layout'],'imgD':[],'segD':[]}
+        self.visual_names = ['input_P1','input_P2', 'img_gen', 'flow_fields', 'masks']
+        self.model_names = {'G':['source','target','flow_net'],'D':[]}
 
         self.keys = ['head','body','leg']
         self.mask_id = {'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
-        self.channel_id = {'head':[0,14,15,16,17],'body':[1,2,3,4,5,6,7,8,11],'leg':[8,9,10,11,12,13]}
-        # self.target_mask_id = {'backgrand':[0],'hair':[1,2],'head':[4,13],'arm':[14,15],'body':[3,5,6,7,10,11],'leg':[16,17],'pants':[9,12],'shoes':[8,18,19]}
-        self.target_mask_id = {'backgrand':[0],'head':[1,2,4,13],'body':[3,5,6,7,10,11,14,15],'leg':[8,9,12,16,17,18,19]}
         self.GPU = torch.device('cuda:0')
 
         self.FloatTensor = torch.cuda.FloatTensor if len(self.gpu_ids)>0 \
@@ -73,12 +70,10 @@ class Pose(BaseModel):
 
         # define the discriminator 
         if self.opt.dataset_mode == 'fashion':
-            self.net_imgD = network.define_d(opt, ndf=32, img_f=128, layers=4, use_spect=opt.use_spect_d)
-            self.net_segD = network.define_d(opt, input_nc=4, ndf=32, img_f=128, layers=4, use_spect=opt.use_spect_d)
+            self.net_D = network.define_d(opt, ndf=32, img_f=128, layers=4, use_spect=opt.use_spect_d)
         elif self.opt.dataset_mode== 'market':
             self.net_D = network.define_d(opt, ndf=32, img_f=128, layers=3, use_spect=opt.use_spect_d)
         self.flow2color = util.flow2color()
-        self.layout2color = util.layout2color
 
         if self.isTrain:
             # define the loss functions
@@ -94,15 +89,10 @@ class Pose(BaseModel):
                                                lr=opt.lr, betas=(0.0, 0.999))
             self.optimizers.append(self.optimizer_G)
 
-            self.optimizer_imgD = torch.optim.Adam(itertools.chain(
-                                filter(lambda p: p.requires_grad, self.net_imgD.parameters())),
+            self.optimizer_D = torch.optim.Adam(itertools.chain(
+                                filter(lambda p: p.requires_grad, self.net_D.parameters())),
                                 lr=opt.lr*opt.ratio_g2d, betas=(0.0, 0.999))
-            self.optimizers.append(self.optimizer_imgD)
-
-            self.optimizer_segD = torch.optim.Adam(itertools.chain(
-                                filter(lambda p: p.requires_grad, self.net_segD.parameters())),
-                                lr=opt.lr*opt.ratio_g2d, betas=(0.0, 0.999))
-            self.optimizers.append(self.optimizer_segD)
+            self.optimizers.append(self.optimizer_D)
 
         # load the pre-trained model and schedulers
         self.setup(opt)
@@ -117,16 +107,6 @@ class Pose(BaseModel):
             input_P1mask = input['P1masks'].cuda()
             input_P2mask = input['P2masks'].cuda()
 
-        res_mask = []
-        for key in self.target_mask_id.keys():
-            tmpmask = []
-            for k in self.target_mask_id[key]:
-                tmpmask.append(torch.where(input_P2mask==k,torch.ones_like(input_P2mask),torch.zeros_like(input_P2mask)))
-            tmpmask = torch.stack(tmpmask)
-            res_mask.append(torch.sum(tmpmask,axis=0))
-        self.target_layout = torch.stack(res_mask,1)
-        self.target_layout = self.target_layout.float()
-
         input_P1mask,input_P1backmask = pose_utils.obtain_mask(input_P1mask,self.mask_id,self.keys)
         input_P2mask,input_P2backmask = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
         self.input_P1 = self.input_fullP1.repeat(3,1,1,1)*input_P1mask
@@ -135,9 +115,9 @@ class Pose(BaseModel):
         self.input_P2mask = input_P2mask.float()
         self.input_P1backmask = input_P1backmask
         self.input_P2backmask = input_P2backmask
-        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],self.channel_id,self.keys,self.GPU,self.opt,input['affine'])
-        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],self.channel_id,self.keys,self.GPU,self.opt)
-        self.target_BP = pose_utils.cords_to_map_full(input['BP2'],self.GPU,self.opt)
+        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.mask_id,self.keys,self.GPU,self.opt,input['affine'])
+        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.mask_id,self.keys,self.GPU,self.opt)
+ 
 
         self.image_paths=[]
         for i in range(self.opt.batchSize):
@@ -146,15 +126,15 @@ class Pose(BaseModel):
 
     def test(self):
         """Forward function used in test time"""
-        img_gen, flow_fields, masks, layout = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.target_BP, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
-        res_img = torch.cat([self.input_fullP1[:,:,:,40:216],self.input_fullP2[:,:,:,40:216],img_gen[:,:,:,40:216]],3)
+        img_gen, flow_fields, masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
+        res_img = torch.cat([self.input_fullP1*(1.0-self.input_P1backmask),self.input_fullP2*(1.0-self.input_P2backmask),img_gen],3)
         self.save_results(res_img,self.opt.results_dir, data_name='vis')
         if self.opt.calcfid:
-            self.save_results(img_gen,'calc_fid_dir', data_name='gen',data_ext='bmp')
+            self.save_results(img_gen,'calc_fid_dir', data_name='gen')
 
     def forward(self):
         """Run forward processing to get the inputs"""
-        self.img_gen, self.flow_fields, self.masks, self.layout = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.target_BP, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
+        self.img_gen, self.flow_fields, self.masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
 
 
     def backward_D_basic(self, netD, real, fake):
@@ -178,10 +158,8 @@ class Pose(BaseModel):
 
     def backward_D(self):
         """Calculate the GAN loss for the discriminators"""
-        base_function._unfreeze(self.net_imgD)
-        base_function._unfreeze(self.net_segD)
-        self.loss_dis_img_gen = self.backward_D_basic(self.net_imgD, self.input_fullP2, self.img_gen) #注意有无背景！
-        self.loss_dis_seg_gen = self.backward_D_basic(self.net_segD, self.target_layout, self.layout)
+        base_function._unfreeze(self.net_D)
+        self.loss_dis_img_gen = self.backward_D_basic(self.net_D, self.input_fullP2, self.img_gen) #注意有无背景！
 
     def backward_G(self):
         """Calculate training loss for the generator"""
@@ -189,9 +167,6 @@ class Pose(BaseModel):
         loss_app_gen = self.L1loss(self.img_gen, self.input_fullP2) #注意有无背景！
         self.loss_app_gen = loss_app_gen * self.opt.lambda_rec
         
-        loss_layout_l1 = self.L1loss(self.layout,self.target_layout)
-        self.loss_layout_l1 = loss_layout_l1*1.0
-
         # Calculate Sampling Correctness Loss        
         # loss_correctness_gen = self.Correctness(self.input_P2[:self.opt.batchSize], self.input_P1[:self.opt.batchSize], self.flow_fields[0], self.opt.attn_layer)+\
         #     self.Correctness(self.input_P2[self.opt.batchSize:2*self.opt.batchSize], self.input_P1[self.opt.batchSize:2*self.opt.batchSize], self.flow_fields[1], self.opt.attn_layer)+\
@@ -199,12 +174,9 @@ class Pose(BaseModel):
         # self.loss_correctness_gen = loss_correctness_gen * self.opt.lambda_correct        
 
         # Calculate GAN loss
-        base_function._freeze(self.net_imgD)
-        base_function._freeze(self.net_segD)
-        D_img_fake = self.net_imgD(self.img_gen)
-        D_seg_fake = self.net_segD(self.layout)
-        self.loss_ad_img_gen = self.GANloss(D_img_fake, True, False) * self.opt.lambda_g
-        self.loss_ad_seg_gen = self.GANloss(D_seg_fake, True, False) * self.opt.lambda_g
+        base_function._freeze(self.net_D)
+        D_fake = self.net_D(self.img_gen)
+        self.loss_ad_gen = self.GANloss(D_fake, True, False) * self.opt.lambda_g
 
         # Calculate regularization term 
         loss_regularization = self.Regularization(self.flow_fields[0])+self.Regularization(self.flow_fields[1])+self.Regularization(self.flow_fields[2])
@@ -220,7 +192,7 @@ class Pose(BaseModel):
         total_loss = 0
 
         for name in self.loss_names:
-            if name not in ['dis_img_gen','dis_seg_gen']:
+            if name != 'dis_img_gen':
                 total_loss += getattr(self, "loss_" + name)
         total_loss.backward()
 
@@ -229,11 +201,9 @@ class Pose(BaseModel):
         """update network weights"""
         self.forward()
 
-        self.optimizer_imgD.zero_grad()
-        self.optimizer_segD.zero_grad()
+        self.optimizer_D.zero_grad()
         self.backward_D()
-        self.optimizer_imgD.step()
-        self.optimizer_segD.step()
+        self.optimizer_D.step()
 
         self.optimizer_G.zero_grad()
         self.backward_G()
