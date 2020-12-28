@@ -124,6 +124,31 @@ class Pose(BaseModel):
             self.image_paths.append(os.path.splitext(input['P1_path'][i])[0] + '_2_' + input['P2_path'][i])
 
 
+    def set_input_test(self,input):
+        self.input_fullP1 = input['P2'].cuda()
+        input_P1mask = input['P2masks'].cuda()
+        self.input_fullP2 = input['P2'].cuda()
+        input_P2mask = input['P2masks'].cuda()
+
+
+
+        input_P1mask,input_P1backmask = pose_utils.obtain_mask(input_P1mask,self.mask_id,self.keys)
+        input_P2mask,input_P2backmask = pose_utils.obtain_mask(input_P2mask,self.mask_id,self.keys)
+        self.input_P1 = self.input_fullP1.repeat(3,1,1,1)*input_P1mask
+        self.input_P1_back = self.input_fullP1*input_P1backmask
+        self.input_P2 = self.input_fullP2.repeat(3,1,1,1)*input_P2mask
+        self.input_P2mask = input_P2mask.float()
+        self.input_P1backmask = input_P1backmask
+        self.input_P2backmask = input_P2backmask
+        self.input_BP1 = pose_utils.cords_to_map(input['BP1'],input['P1masks'],self.mask_id,self.keys,self.GPU,self.opt,input['affine'])
+        self.input_BP2 = pose_utils.cords_to_map(input['BP2'],input['P2masks'],self.mask_id,self.keys,self.GPU,self.opt)
+ 
+
+        self.image_paths=[]
+        for i in range(self.opt.batchSize):
+            self.image_paths.append(os.path.splitext(input['P1_path'][i])[0] + '_2_' + input['P2_path'][i])
+
+
     def test(self):
         """Forward function used in test time"""
         img_gen, flow_fields, masks = self.net_G(self.input_P1, self.input_BP1, self.input_BP2, self.input_fullP1, (1.0-self.input_P1backmask), self.input_P2mask ,self.input_P2backmask)
