@@ -157,7 +157,7 @@ class PoseTargetNet(BaseNetwork):
                 # my_mask_a = self.mask_maker(masks[0][counter],target_mask[:self.batchSize])
                 # my_mask_b = self.mask_maker(masks[1][counter],target_mask[self.batchSize:2*self.batchSize])
                 # my_mask_c = self.mask_maker(masks[2][counter],target_mask[2*self.batchSize:])
-                my_mask = masks[0]+masks[1]+masks[2]
+                my_mask = masks[0][counter]+masks[1][counter]+masks[2][counter]
                 _,_,h,w = flow_fields[0][counter].size()
                 target_mask = torch.nn.functional.interpolate(target_mask, (h,w))
                 out_attn = model([source_feature[0][i],source_feature[1][i],source_feature[2][i]], out, [flow_fields[0][counter],flow_fields[1][counter],flow_fields[2][counter]],[target_mask[:self.batchSize],target_mask[self.batchSize:2*self.batchSize],target_mask[2*self.batchSize:]])        
